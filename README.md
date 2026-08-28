@@ -99,6 +99,18 @@ https://example.com/file.zip
 https://example.com/file.zip my_custom_name.zip
 ```
 
+### Premium accounts
+
+Some hosts (Instagram, YouTube, X, Facebook, etc.) require an authenticated account to work in JDownloader. Manage them directly from Telegram:
+
+```
+/accounts                                    List configured accounts
+/addaccount <hoster> <username> <password>   Add or update an account (e.g. /addaccount instagram.com myuser mypass)
+/removeaccount <uuid>                        Remove an account (uuid shown by /accounts)
+```
+
+The `/addaccount` message is deleted immediately after processing so the password doesn't linger in the chat history.
+
 | Command   | Description                       |
 | --------- | ---------------------------------- |
 | `/start`  | Show the welcome message and usage |

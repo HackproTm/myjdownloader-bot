@@ -291,6 +291,37 @@ class JDownloaderManager:
       "finished": True
     }]) or [])
 
+  # ── Accounts ──────────────────────────────────────────────────────────────
+
+  async def list_accounts(self) -> list:
+    """List configured premium accounts."""
+    await self.ensure_connected()
+    return await self._run(self._list_accounts_sync)
+
+  def _list_accounts_sync(self) -> list:
+    """Synchronously list premium accounts."""
+    return self._device.accounts.list_accounts() or []
+
+  async def add_account(self, hoster: str, username: str,
+                        password: str) -> None:
+    """Add a premium account for a hoster plugin (e.g. "instagram.com")."""
+    await self.ensure_connected()
+    await self._run(self._add_account_sync, hoster, username, password)
+
+  def _add_account_sync(self, hoster: str, username: str,
+                        password: str) -> None:
+    """Synchronously add a premium account."""
+    self._device.accounts.add_account(hoster, username, password)
+
+  async def remove_account(self, account_id: int) -> None:
+    """Remove a premium account by its UUID."""
+    await self.ensure_connected()
+    await self._run(self._remove_account_sync, account_id)
+
+  def _remove_account_sync(self, account_id: int) -> None:
+    """Synchronously remove a premium account."""
+    self._device.accounts.remove_accounts([account_id])
+
 
 # ── Utilities ──────────────────────────────────────────────────────────────────
 

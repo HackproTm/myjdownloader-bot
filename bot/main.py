@@ -9,7 +9,10 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 load_dotenv()
 
 from config import TELEGRAM_TOKEN  # noqa: E402
-from handlers import cmd_help, cmd_start, handle_message  # noqa: E402
+from handlers import (  # noqa: E402
+  cmd_accounts, cmd_add_account, cmd_help, cmd_remove_account, cmd_start,
+  handle_message,
+)
 from utils.logger import configure_logging  # noqa: E402
 
 configure_logging()
@@ -23,6 +26,9 @@ def main() -> None:
   # Register command and message handlers
   app.add_handler(CommandHandler("start", cmd_start))
   app.add_handler(CommandHandler("help", cmd_help))
+  app.add_handler(CommandHandler("accounts", cmd_accounts))
+  app.add_handler(CommandHandler("addaccount", cmd_add_account))
+  app.add_handler(CommandHandler("removeaccount", cmd_remove_account))
   app.add_handler(
     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

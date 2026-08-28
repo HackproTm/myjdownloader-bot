@@ -30,7 +30,11 @@ async def cmd_start(update: Update,
     "*Accepted formats:*\n"
     "• `https://example\\.com/file\\.zip`\n"
     "• `https://example\\.com/file\\.zip my_file\\.zip`\n\n"
-    "When the download finishes, I will send the file back here\\.",
+    "When the download finishes, I will send the file back here\\.\n\n"
+    "*Premium accounts:*\n"
+    "• `/accounts` — list configured accounts\n"
+    "• `/addaccount <hoster> <username> <password>` — add one\n"
+    "• `/removeaccount <uuid>` — remove one",
     parse_mode=ParseMode.MARKDOWN_V2,
   )
 
@@ -38,6 +42,114 @@ async def cmd_start(update: Update,
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /help command."""
   await cmd_start(update, context)
+
+
+async def cmd_accounts(update: Update,
+                       context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle /accounts command - list configured premium accounts."""
+  if not is_authorized(update):
+    return
+
+  try:
+    accounts = await manager.list_accounts()
+  except Exception as exc:
+    logger.error("Error listing accounts: %s", exc)
+    await update.message.reply_text(  # type: ignore[union-attr]
+      f"❌ Could not list accounts:\n`{exc}`",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
+  if not accounts:
+    await update.message.reply_text(  # type: ignore[union-attr]
+      "No premium accounts configured.\nUse `/addaccount <hoster> <username> <password>` to add one.",
+      parse_mode=ParseMode.MARKDOWN,
+    )
+    return
+
+  lines = ["🔑 *Premium accounts:*"]
+  for acc in accounts:
+    status = "✅" if acc.get("valid") else "⚠️"
+    disabled = "" if acc.get("enabled", True) else " _(disabled)_"
+    lines.append(f"{status} `{acc.get('uuid')}` — *{acc.get('hostname', '?')}*"
+                 f" — `{acc.get('userName', '?')}`{disabled}")
+  lines.append("\nUse `/removeaccount <uuid>` to remove one.")
+
+  await update.message.reply_text(  # type: ignore[union-attr]
+    "\n".join(lines),
+    parse_mode=ParseMode.MARKDOWN)
+
+
+async def cmd_add_account(update: Update,
+                          context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle /addaccount <hoster> <username> <password> command."""
+  if not is_authorized(update):
+    return
+
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
+
+  # Delete the command message right away so the password doesn't linger in chat history.
+  try:
+    await update.message.delete()  # type: ignore[union-attr]
+  except Exception:
+    pass
+
+  if len(context.args) != 3:  # type: ignore[arg-type]
+    await context.bot.send_message(
+      chat_id=chat_id,
+      text="Usage: `/addaccount <hoster> <username> <password>`\n"
+      "Example: `/addaccount instagram.com myuser mypass`",
+      parse_mode=ParseMode.MARKDOWN,
+    )
+    return
+
+  hoster, username, password = context.args  # type: ignore[misc]
+
+  try:
+    await manager.add_account(hoster, username, password)
+  except Exception as exc:
+    logger.error("Error adding account: %s", exc)
+    await context.bot.send_message(
+      chat_id=chat_id,
+      text=f"❌ Could not add account:\n`{exc}`",
+      parse_mode=ParseMode.MARKDOWN,
+    )
+    return
+
+  await context.bot.send_message(
+    chat_id=chat_id,
+    text=f"✅ Account added for *{hoster}* (`{username}`).",
+    parse_mode=ParseMode.MARKDOWN,
+  )
+
+
+async def cmd_remove_account(update: Update,
+                             context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle /removeaccount <uuid> command."""
+  if not is_authorized(update):
+    return
+
+  args = context.args  # type: ignore[assignment]
+  if len(args) != 1 or not args[0].lstrip("-").isdigit():
+    await update.message.reply_text(  # type: ignore[union-attr]
+      "Usage: `/removeaccount <uuid>`\nUse `/accounts` to see the UUIDs.",
+      parse_mode=ParseMode.MARKDOWN,
+    )
+    return
+
+  account_id = int(args[0])
+
+  try:
+    await manager.remove_account(account_id)
+  except Exception as exc:
+    logger.error("Error removing account: %s", exc)
+    await update.message.reply_text(  # type: ignore[union-attr]
+      f"❌ Could not remove account:\n`{exc}`",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
+  await update.message.reply_text(  # type: ignore[union-attr]
+    f"🗑️ Account `{account_id}` removed.",
+    parse_mode=ParseMode.MARKDOWN)
 
 
 # ─── Message Handler ──────────────────────────────────────────────────────────

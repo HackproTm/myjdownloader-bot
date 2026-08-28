@@ -5,7 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 from data import DownloadJob
 from handlers.message_handlers import (
   _default_package_name,
+  cmd_accounts,
+  cmd_add_account,
   cmd_help,
+  cmd_remove_account,
   cmd_start,
   handle_message,
 )
@@ -57,6 +60,126 @@ class TestCmdHelp:
     await cmd_help(mock_update, mock_context)
 
     mock_update.message.reply_text.assert_awaited_once()
+
+
+class TestCmdAccounts:
+
+  async def test_lists_accounts_when_authorized(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr(
+      "handlers.message_handlers.manager.list_accounts",
+      AsyncMock(return_value=[{
+        "uuid": 1,
+        "hostname": "instagram.com",
+        "userName": "user",
+        "valid": True,
+        "enabled": True,
+      }]),
+    )
+
+    await cmd_accounts(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_awaited_once()
+    message = mock_update.message.reply_text.call_args.args[0]
+    assert "instagram.com" in message
+
+  async def test_reports_no_accounts_configured(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.manager.list_accounts",
+                        AsyncMock(return_value=[]))
+
+    await cmd_accounts(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_awaited_once()
+
+  async def test_does_nothing_when_unauthorized(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+
+    await cmd_accounts(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_not_awaited()
+
+
+class TestCmdAddAccount:
+
+  async def test_adds_account_and_deletes_message(self, mock_update,
+                                                  mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.manager.add_account",
+                        AsyncMock())
+    mock_update.message.delete = AsyncMock()
+    mock_context.bot.send_message = AsyncMock()
+    mock_context.args = ["instagram.com", "user", "pass"]
+
+    await cmd_add_account(mock_update, mock_context)
+
+    mock_update.message.delete.assert_awaited_once()
+    mock_context.bot.send_message.assert_awaited_once()
+
+  async def test_reports_usage_when_args_missing(self, mock_update,
+                                                 mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    mock_update.message.delete = AsyncMock()
+    mock_context.bot.send_message = AsyncMock()
+    mock_context.args = ["instagram.com"]
+
+    await cmd_add_account(mock_update, mock_context)
+
+    mock_context.bot.send_message.assert_awaited_once()
+    assert "Usage" in mock_context.bot.send_message.call_args.kwargs["text"]
+
+  async def test_does_nothing_when_unauthorized(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+    mock_update.message.delete = AsyncMock()
+
+    await cmd_add_account(mock_update, mock_context)
+
+    mock_update.message.delete.assert_not_awaited()
+
+
+class TestCmdRemoveAccount:
+
+  async def test_removes_account_when_uuid_valid(self, mock_update,
+                                                 mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.manager.remove_account",
+                        AsyncMock())
+    mock_context.args = ["42"]
+
+    await cmd_remove_account(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_awaited_once()
+
+  async def test_reports_usage_when_uuid_invalid(self, mock_update,
+                                                 mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    mock_context.args = ["not-a-number"]
+
+    await cmd_remove_account(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_awaited_once()
+    assert "Usage" in mock_update.message.reply_text.call_args.args[0]
+
+  async def test_does_nothing_when_unauthorized(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+
+    await cmd_remove_account(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_not_awaited()
 
 
 class TestHandleMessage:

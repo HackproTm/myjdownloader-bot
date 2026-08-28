@@ -57,6 +57,73 @@ class TestAddDownload:
     manager._run.assert_awaited_once()
 
 
+class TestListAccounts:
+
+  async def test_returns_accounts(self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    monkeypatch.setattr(
+      manager, "_run", AsyncMock(return_value=[{
+        "hostname": "instagram.com"
+      }]))
+
+    accounts = await manager.list_accounts()
+
+    assert accounts == [{"hostname": "instagram.com"}]
+    manager.ensure_connected.assert_awaited_once()
+
+  def test_sync_returns_device_accounts_list(self):
+    manager = JDownloaderManager()
+    manager._device = MagicMock()
+    manager._device.accounts.list_accounts.return_value = [{"hostname": "x"}]
+
+    assert manager._list_accounts_sync() == [{"hostname": "x"}]
+
+
+class TestAddAccount:
+
+  async def test_calls_run_with_sync_helper(self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    monkeypatch.setattr(manager, "_run", AsyncMock())
+
+    await manager.add_account("instagram.com", "user", "pass")
+
+    manager.ensure_connected.assert_awaited_once()
+    manager._run.assert_awaited_once_with(manager._add_account_sync,
+                                          "instagram.com", "user", "pass")
+
+  def test_sync_calls_device_accounts_add_account(self):
+    manager = JDownloaderManager()
+    manager._device = MagicMock()
+
+    manager._add_account_sync("instagram.com", "user", "pass")
+
+    manager._device.accounts.add_account.assert_called_once_with(
+      "instagram.com", "user", "pass")
+
+
+class TestRemoveAccount:
+
+  async def test_calls_run_with_sync_helper(self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    monkeypatch.setattr(manager, "_run", AsyncMock())
+
+    await manager.remove_account(42)
+
+    manager.ensure_connected.assert_awaited_once()
+    manager._run.assert_awaited_once_with(manager._remove_account_sync, 42)
+
+  def test_sync_calls_device_accounts_remove_accounts(self):
+    manager = JDownloaderManager()
+    manager._device = MagicMock()
+
+    manager._remove_account_sync(42)
+
+    manager._device.accounts.remove_accounts.assert_called_once_with([42])
+
+
 class TestConnectSync:
 
   def test_connects_and_stores_device(self, monkeypatch):
