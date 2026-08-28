@@ -3,7 +3,12 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from data import DownloadJob
-from services.jdownloader import JDownloaderManager, _find_by_name, _find_by_uuid_or_name
+from services.jdownloader import (
+  JDownloaderManager,
+  _find_by_name,
+  _find_by_uuid_or_name,
+  _first_link_url,
+)
 
 
 class TestFindByName:
@@ -177,3 +182,151 @@ class TestQueryHelpers:
     result = manager._query_download_links(42)
 
     assert result == [{"name": "f.zip"}]
+
+
+class TestFirstLinkUrl:
+
+  def test_returns_url_of_matching_package(self):
+    links = [{
+      "packageUUID": 1,
+      "url": "http://a"
+    }, {
+      "packageUUID": 2,
+      "url": "http://b"
+    }]
+
+    assert _first_link_url(links, 2) == "http://b"
+
+  def test_returns_empty_string_when_no_match(self):
+    assert _first_link_url([{"packageUUID": 1, "url": "http://a"}], 99) == ""
+
+
+class TestListQueue:
+
+  async def test_combines_linkgrabber_and_active_downloads(self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+
+    async def fake_run(fn, *args):
+      return fn(*args)
+
+    monkeypatch.setattr(manager, "_run", fake_run)
+    monkeypatch.setattr(
+      manager,
+      "_query_linkgrabber_packages",
+      lambda: [{
+        "uuid": 1,
+        "name": "queued.zip"
+      }],
+    )
+    monkeypatch.setattr(
+      manager,
+      "_query_linkgrabber_links",
+      lambda: [{
+        "packageUUID": 1,
+        "url": "http://x.com/queued.zip"
+      }],
+    )
+    monkeypatch.setattr(
+      manager,
+      "_query_download_packages",
+      lambda: [
+        {
+          "uuid": 2,
+          "name": "downloading.zip",
+          "status": "Downloading",
+          "finished": False,
+          "bytesTotal": 100,
+          "bytesLoaded": 50,
+        },
+        {
+          "uuid": 3,
+          "name": "done.zip",
+          "status": "Finished",
+          "finished": True,
+          "bytesTotal": 100,
+          "bytesLoaded": 100,
+        },
+      ],
+    )
+    monkeypatch.setattr(
+      manager,
+      "_query_all_download_links",
+      lambda: [{
+        "packageUUID": 2,
+        "url": "http://x.com/downloading.zip"
+      }],
+    )
+
+    entries = await manager.list_queue()
+
+    names = [e["name"] for e in entries]
+    assert "queued.zip" in names
+    assert "downloading.zip" in names
+    assert "done.zip" not in names  # finished downloads are excluded
+
+
+class TestRemoveFromQueue:
+
+  async def test_removes_from_linkgrabber_when_found(self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    run_mock = AsyncMock(side_effect=lambda fn, *args: fn(*args))
+    monkeypatch.setattr(manager, "_run", run_mock)
+    monkeypatch.setattr(manager, "_query_linkgrabber_packages",
+                        lambda: [{
+                          "uuid": 1,
+                          "name": "f.zip"
+                        }])
+    monkeypatch.setattr(manager, "_remove_from_linkgrabber_sync", MagicMock())
+
+    removed = await manager.remove_from_queue("f.zip")
+
+    assert removed is True
+    manager._remove_from_linkgrabber_sync.assert_called_once_with(1)
+
+  async def test_removes_from_downloads_when_not_in_linkgrabber(
+      self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    run_mock = AsyncMock(side_effect=lambda fn, *args: fn(*args))
+    monkeypatch.setattr(manager, "_run", run_mock)
+    monkeypatch.setattr(manager, "_query_linkgrabber_packages", lambda: [])
+    monkeypatch.setattr(manager, "_query_download_packages",
+                        lambda: [{
+                          "uuid": 2,
+                          "name": "f.zip"
+                        }])
+    monkeypatch.setattr(manager, "_remove_from_downloads_sync", MagicMock())
+
+    removed = await manager.remove_from_queue("f.zip")
+
+    assert removed is True
+    manager._remove_from_downloads_sync.assert_called_once_with(2)
+
+  async def test_returns_false_when_not_found(self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    run_mock = AsyncMock(side_effect=lambda fn, *args: fn(*args))
+    monkeypatch.setattr(manager, "_run", run_mock)
+    monkeypatch.setattr(manager, "_query_linkgrabber_packages", lambda: [])
+    monkeypatch.setattr(manager, "_query_download_packages", lambda: [])
+
+    assert await manager.remove_from_queue("missing.zip") is False
+
+  def test_sync_removes_from_linkgrabber(self):
+    manager = JDownloaderManager()
+    manager._device = MagicMock()
+
+    manager._remove_from_linkgrabber_sync(1)
+
+    manager._device.linkgrabber.remove_links.assert_called_once_with([], [1])
+
+  def test_sync_removes_from_downloads_with_cleanup(self):
+    manager = JDownloaderManager()
+    manager._device = MagicMock()
+
+    manager._remove_from_downloads_sync(2)
+
+    manager._device.downloads.cleanup.assert_called_once_with(
+      "DELETE_ALL", "REMOVE_LINKS_AND_DELETE_FILES", "SELECTED", [], [2])

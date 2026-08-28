@@ -10,9 +10,17 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from config import MAX_FILE_SIZE_BYTES
-from data import DownloadJob
+from data import DownloadJob, history
 from services import manager
-from utils import extract_urls, format_size, is_authorized, progress_bar, validators
+from utils import (
+  extract_urls,
+  format_queue_list,
+  format_size,
+  format_status_list,
+  is_authorized,
+  progress_bar,
+  validators,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +39,11 @@ async def cmd_start(update: Update,
     "• `https://example\\.com/file\\.zip`\n"
     "• `https://example\\.com/file\\.zip my_file\\.zip`\n\n"
     "When the download finishes, I will send the file back here\\.\n\n"
+    "*Queue management:*\n"
+    "• `/queue <url> [name] [force]` — add a download to the queue\n"
+    "• `/list` — queue with download percentage\n"
+    "• `/status` — queue with status text\n"
+    "• `/remove <name>` — remove a download and delete its local file\n\n"
     "*Premium accounts:*\n"
     "• `/accounts` — list configured accounts\n"
     "• `/addaccount <hoster> <username> <password>` — add one\n"
@@ -149,6 +162,117 @@ async def cmd_remove_account(update: Update,
 
   await update.message.reply_text(  # type: ignore[union-attr]
     f"🗑️ Account `{account_id}` removed.",
+    parse_mode=ParseMode.MARKDOWN)
+
+
+async def cmd_queue(update: Update,
+                    context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle /queue <url> [name] [force] command."""
+  if not is_authorized(update):
+    return
+
+  args = list(context.args or [])  # type: ignore[arg-type]
+  force = bool(args) and args[-1].lower() == "force"
+  if force:
+    args = args[:-1]
+
+  if not args:
+    await update.message.reply_text(  # type: ignore[union-attr]
+      "Usage: `/queue <url> [name] [force]`",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
+  url = args[0]
+  package_name = args[1] if len(args) > 1 else _default_package_name(url)
+
+  if not force:
+    existing = history.find_duplicate(url, package_name)
+    if existing:
+      matched = "URL" if existing["matched_by"] == "url" else "file name"
+      await update.message.reply_text(  # type: ignore[union-attr]
+        f"⚠️ This {matched} was already queued on {existing['added_at']} "
+        f"as `{existing['package_name']}`.\n"
+        f"Resend with `force` at the end to download it again:\n"
+        f"`/queue {url} {package_name} force`",
+        parse_mode=ParseMode.MARKDOWN,
+      )
+      return
+
+  history.record(url, package_name)
+  await _run_download(update, context, url, package_name)
+
+
+async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle /list command - show the queue with download percentage."""
+  if not is_authorized(update):
+    return
+
+  try:
+    entries = await manager.list_queue()
+  except Exception as exc:
+    logger.error("Error listing queue: %s", exc)
+    await update.message.reply_text(  # type: ignore[union-attr]
+      f"❌ Could not list the queue:\n`{exc}`",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
+  await update.message.reply_text(  # type: ignore[union-attr]
+    format_queue_list(entries),
+    parse_mode=ParseMode.MARKDOWN)
+
+
+async def cmd_status(update: Update,
+                     context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle /status command - show the queue with status text."""
+  if not is_authorized(update):
+    return
+
+  try:
+    entries = await manager.list_queue()
+  except Exception as exc:
+    logger.error("Error fetching status: %s", exc)
+    await update.message.reply_text(  # type: ignore[union-attr]
+      f"❌ Could not fetch the status:\n`{exc}`",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
+  await update.message.reply_text(  # type: ignore[union-attr]
+    format_status_list(entries),
+    parse_mode=ParseMode.MARKDOWN)
+
+
+async def cmd_remove(update: Update,
+                     context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle /remove <name> command - remove a download and its local file."""
+  if not is_authorized(update):
+    return
+
+  args = context.args  # type: ignore[assignment]
+  if not args:
+    await update.message.reply_text(  # type: ignore[union-attr]
+      "Usage: `/remove <name>`",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
+  name = " ".join(args)
+
+  try:
+    removed = await manager.remove_from_queue(name)
+  except Exception as exc:
+    logger.error("Error removing '%s' from queue: %s", name, exc)
+    await update.message.reply_text(  # type: ignore[union-attr]
+      f"❌ Could not remove `{name}`:\n`{exc}`",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
+  if not removed:
+    await update.message.reply_text(  # type: ignore[union-attr]
+      f"⚠️ No queue entry found matching `{name}`.",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
+  await update.message.reply_text(  # type: ignore[union-attr]
+    f"🗑️ Removed `{name}` from the queue and JDownloader.",
     parse_mode=ParseMode.MARKDOWN)
 
 

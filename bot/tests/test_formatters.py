@@ -1,6 +1,11 @@
 """Tests for utils.formatters."""
 
-from utils.formatters import format_size, progress_bar
+from utils.formatters import (
+  format_queue_list,
+  format_size,
+  format_status_list,
+  progress_bar,
+)
 
 
 class TestFormatSize:
@@ -27,6 +32,58 @@ class TestProgressBar:
 
   def test_zero_percent(self):
     assert progress_bar(0) == "░" * 12
+
+
+class TestFormatQueueList:
+
+  def test_returns_empty_message_when_no_entries(self):
+    assert format_queue_list([]) == "📭 The queue is empty."
+
+  def test_includes_name_url_and_percentage(self):
+    entries = [{
+      "name": "file.zip",
+      "url": "http://x.com/file.zip",
+      "bytes_total": 200,
+      "bytes_loaded": 100,
+    }]
+
+    result = format_queue_list(entries)
+
+    assert "file.zip" in result
+    assert "http://x.com/file.zip" in result
+    assert "50%" in result
+
+  def test_handles_zero_bytes_total(self):
+    entries = [{
+      "name": "file.zip",
+      "url": "",
+      "bytes_total": 0,
+      "bytes_loaded": 0,
+    }]
+
+    result = format_queue_list(entries)
+
+    assert "0%" in result
+    assert "-" in result
+
+
+class TestFormatStatusList:
+
+  def test_returns_empty_message_when_no_entries(self):
+    assert format_status_list([]) == "📭 No downloads in progress."
+
+  def test_includes_name_status_and_url(self):
+    entries = [{
+      "name": "file.zip",
+      "url": "http://x.com/file.zip",
+      "status": "Downloading",
+    }]
+
+    result = format_status_list(entries)
+
+    assert "file.zip" in result
+    assert "Downloading" in result
+    assert "http://x.com/file.zip" in result
 
   def test_full_percent(self):
     assert progress_bar(100) == "█" * 12

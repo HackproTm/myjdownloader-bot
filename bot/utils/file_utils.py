@@ -15,7 +15,8 @@ def search_in_tree(root: str, filename: str) -> Optional[str]:
   Returns:
     Full path to the file, or None if not found
   """
-  for dirpath, _, files in os.walk(root):
+  for dirpath, dirnames, files in os.walk(root):
+    dirnames[:] = [d for d in dirnames if not d.startswith(".")]
     if filename in files:
       return os.path.join(dirpath, filename)
   return None
@@ -36,9 +37,11 @@ def newest_file(root: str) -> Optional[str]:
   skip_extensions = {".part", ".tmp", ".crdownload", ".download"}
   newest_path, newest_mtime = None, 0.0
 
-  for dirpath, _, files in os.walk(root):
+  for dirpath, dirnames, files in os.walk(root):
+    dirnames[:] = [d for d in dirnames if not d.startswith(".")]
     for filename in files:
-      if any(filename.endswith(ext) for ext in skip_extensions):
+      if filename.startswith(".") or any(
+          filename.endswith(ext) for ext in skip_extensions):
         continue
       path = os.path.join(dirpath, filename)
       mtime = os.path.getmtime(path)

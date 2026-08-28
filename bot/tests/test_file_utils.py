@@ -18,6 +18,13 @@ class TestSearchInTree:
   def test_returns_none_when_missing(self, tmp_path):
     assert search_in_tree(str(tmp_path), "missing.txt") is None
 
+  def test_skips_hidden_directories(self, tmp_path):
+    hidden = tmp_path / ".bot_data"
+    hidden.mkdir()
+    (hidden / "history.json").write_text("{}")
+
+    assert search_in_tree(str(tmp_path), "history.json") is None
+
 
 class TestNewestFile:
 
@@ -38,3 +45,13 @@ class TestNewestFile:
 
   def test_returns_none_for_empty_directory(self, tmp_path):
     assert newest_file(str(tmp_path)) is None
+
+  def test_ignores_hidden_directories_and_files(self, tmp_path):
+    (tmp_path / "real.txt").write_text("data")
+    hidden_dir = tmp_path / ".bot_data"
+    hidden_dir.mkdir()
+    time.sleep(0.01)
+    (hidden_dir / "history.json").write_text("{}")
+    (tmp_path / ".hidden_file").write_text("x")
+
+    assert newest_file(str(tmp_path)) == str(tmp_path / "real.txt")

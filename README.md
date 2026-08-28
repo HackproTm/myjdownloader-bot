@@ -10,7 +10,8 @@ Send a URL to the bot, it queues the download in JDownloader, tracks progress wi
 - 🏷️ Optional custom file name (`<url> <filename>`)
 - 📊 Live progress updates (percentage, size, status) in Telegram
 - 📤 Automatic upload of the finished file back to the chat
-- 🔒 Optional chat allow-list (`ALLOWED_CHAT_IDS`) to restrict who can use the bot
+- � Queue management commands (`/queue`, `/list`, `/status`, `/remove`) with duplicate-download detection
+- �🔒 Optional chat allow-list (`ALLOWED_CHAT_IDS`) to restrict who can use the bot
 - 🐳 Fully containerized with Docker Compose (bot + JDownloader)
 
 ## Tech Stack
@@ -98,6 +99,19 @@ Open your bot in Telegram and send `/start`, then send it a download link.
 https://example.com/file.zip
 https://example.com/file.zip my_custom_name.zip
 ```
+
+### Queue management
+
+```
+/queue <url> [name] [force]   Add a download to the queue (like sending a plain URL)
+/list                         Show the queue with download percentage
+/status                       Show the queue with status text (Name, Status, URL)
+/remove <name>                Remove a download from the queue/JDownloader and delete its local file
+```
+
+If a URL or file name was already queued before, `/queue` warns you and asks you to resend the
+command with `force` at the end to confirm you want to download it again. This history is stored
+in `downloads/.bot_data/history.json` and survives container restarts.
 
 ### Premium accounts
 

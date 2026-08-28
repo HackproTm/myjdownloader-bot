@@ -291,6 +291,103 @@ class JDownloaderManager:
       "finished": True
     }]) or [])
 
+  # ── Queue management ─────────────────────────────────────────────────────
+
+  async def list_queue(self) -> list:
+    """
+    List packages that are queued (LinkGrabber) or actively downloading.
+
+    Finished downloads are excluded since they've already been delivered.
+
+    Returns:
+      List of dicts with uuid, name, url, status, bytes_total, bytes_loaded
+    """
+    await self.ensure_connected()
+
+    lg_pkgs = await self._run(self._query_linkgrabber_packages)
+    lg_links = await self._run(self._query_linkgrabber_links)
+    dl_pkgs = await self._run(self._query_download_packages)
+    dl_links = await self._run(self._query_all_download_links)
+
+    entries = []
+    for pkg in lg_pkgs:
+      entries.append({
+        "uuid": pkg["uuid"],
+        "name": pkg["name"],
+        "url": _first_link_url(lg_links, pkg["uuid"]),
+        "status": "Queued",
+        "bytes_total": 0,
+        "bytes_loaded": 0,
+      })
+    for pkg in dl_pkgs:
+      if pkg.get("finished"):
+        continue
+      entries.append({
+        "uuid": pkg["uuid"],
+        "name": pkg["name"],
+        "url": _first_link_url(dl_links, pkg["uuid"]),
+        "status": pkg.get("status", ""),
+        "bytes_total": pkg.get("bytesTotal", 0),
+        "bytes_loaded": pkg.get("bytesLoaded", 0),
+      })
+    return entries
+
+  def _query_linkgrabber_links(self) -> list:
+    """Query links in LinkGrabber (with URL)."""
+    return (self._device.linkgrabber.query_links([{
+      "url": True,
+      "packageUUIDs": [],
+    }]) or [])
+
+  def _query_all_download_links(self) -> list:
+    """Query all links in the download list (with URL)."""
+    return (self._device.downloads.query_links([{
+      "url": True,
+      "packageUUIDs": [],
+    }]) or [])
+
+  async def remove_from_queue(self, package_name: str) -> bool:
+    """
+    Remove a package by name from LinkGrabber or Downloads.
+
+    When removed from Downloads, the local files are deleted too.
+
+    Args:
+      package_name: Name of the package to remove
+
+    Returns:
+      True if a matching package was found and removed, False otherwise
+    """
+    await self.ensure_connected()
+
+    lg_pkgs = await self._run(self._query_linkgrabber_packages)
+    match = _find_by_name(lg_pkgs, package_name)
+    if match:
+      await self._run(self._remove_from_linkgrabber_sync, match["uuid"])
+      return True
+
+    dl_pkgs = await self._run(self._query_download_packages)
+    match = _find_by_name(dl_pkgs, package_name)
+    if match:
+      await self._run(self._remove_from_downloads_sync, match["uuid"])
+      return True
+
+    return False
+
+  def _remove_from_linkgrabber_sync(self, package_uuid: int) -> None:
+    """Synchronously remove a package from the LinkGrabber list."""
+    self._device.linkgrabber.remove_links([], [package_uuid])
+
+  def _remove_from_downloads_sync(self, package_uuid: int) -> None:
+    """Synchronously remove a package from Downloads and delete its files on disk."""
+    self._device.downloads.cleanup(
+      "DELETE_ALL",
+      "REMOVE_LINKS_AND_DELETE_FILES",
+      "SELECTED",
+      [],
+      [package_uuid],
+    )
+
   # ── Accounts ──────────────────────────────────────────────────────────────
 
   async def list_accounts(self) -> list:
@@ -339,6 +436,14 @@ def _find_by_uuid_or_name(packages: list, uuid: Optional[int],
     if match:
       return match
   return _find_by_name(packages, name)
+
+
+def _first_link_url(links: list, package_uuid: int) -> str:
+  """Find the URL of the first link belonging to a package."""
+  for link in links:
+    if link.get("packageUUID") == package_uuid:
+      return link.get("url", "")
+  return ""
 
 
 # Shared global instance used by handlers.

@@ -8,8 +8,12 @@ from handlers.message_handlers import (
   cmd_accounts,
   cmd_add_account,
   cmd_help,
+  cmd_list,
+  cmd_queue,
+  cmd_remove,
   cmd_remove_account,
   cmd_start,
+  cmd_status,
   handle_message,
 )
 
@@ -178,6 +182,187 @@ class TestCmdRemoveAccount:
                         lambda update: False)
 
     await cmd_remove_account(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_not_awaited()
+
+
+class TestCmdQueue:
+
+  async def test_queues_new_url(self, mock_update, mock_context, monkeypatch,
+                                tmp_path):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.history.find_duplicate",
+                        lambda url, name: None)
+    monkeypatch.setattr("handlers.message_handlers.history.record",
+                        MagicMock())
+    run_download_mock = AsyncMock()
+    monkeypatch.setattr("handlers.message_handlers._run_download",
+                        run_download_mock)
+    mock_context.args = ["http://x.com/f.zip", "f.zip"]
+
+    await cmd_queue(mock_update, mock_context)
+
+    run_download_mock.assert_awaited_once()
+    call_args = run_download_mock.call_args.args
+    assert call_args[2] == "http://x.com/f.zip"
+    assert call_args[3] == "f.zip"
+
+  async def test_warns_when_duplicate_found(self, mock_update, mock_context,
+                                            monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr(
+      "handlers.message_handlers.history.find_duplicate",
+      lambda url, name: {
+        "matched_by": "url",
+        "added_at": "2026-01-01 00:00:00",
+        "package_name": "f.zip",
+      },
+    )
+    run_download_mock = AsyncMock()
+    monkeypatch.setattr("handlers.message_handlers._run_download",
+                        run_download_mock)
+    mock_context.args = ["http://x.com/f.zip", "f.zip"]
+
+    await cmd_queue(mock_update, mock_context)
+
+    run_download_mock.assert_not_awaited()
+    mock_update.message.reply_text.assert_awaited_once()
+    args, _ = mock_update.message.reply_text.call_args
+    assert "already queued" in args[0]
+
+  async def test_force_bypasses_duplicate_check(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    find_duplicate_mock = MagicMock()
+    monkeypatch.setattr("handlers.message_handlers.history.find_duplicate",
+                        find_duplicate_mock)
+    monkeypatch.setattr("handlers.message_handlers.history.record",
+                        MagicMock())
+    run_download_mock = AsyncMock()
+    monkeypatch.setattr("handlers.message_handlers._run_download",
+                        run_download_mock)
+    mock_context.args = ["http://x.com/f.zip", "f.zip", "force"]
+
+    await cmd_queue(mock_update, mock_context)
+
+    find_duplicate_mock.assert_not_called()
+    run_download_mock.assert_awaited_once()
+
+  async def test_reports_usage_when_no_args(self, mock_update, mock_context,
+                                            monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    mock_context.args = []
+
+    await cmd_queue(mock_update, mock_context)
+
+    args, _ = mock_update.message.reply_text.call_args
+    assert "Usage" in args[0]
+
+  async def test_does_nothing_when_unauthorized(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+
+    await cmd_queue(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_not_awaited()
+
+
+class TestCmdList:
+
+  async def test_replies_with_formatted_queue(self, mock_update, mock_context,
+                                              monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.manager.list_queue",
+                        AsyncMock(return_value=[]))
+
+    await cmd_list(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_awaited_once()
+
+  async def test_does_nothing_when_unauthorized(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+
+    await cmd_list(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_not_awaited()
+
+
+class TestCmdStatus:
+
+  async def test_replies_with_formatted_status(self, mock_update, mock_context,
+                                               monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.manager.list_queue",
+                        AsyncMock(return_value=[]))
+
+    await cmd_status(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_awaited_once()
+
+  async def test_does_nothing_when_unauthorized(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+
+    await cmd_status(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_not_awaited()
+
+
+class TestCmdRemove:
+
+  async def test_removes_when_found(self, mock_update, mock_context,
+                                    monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.manager.remove_from_queue",
+                        AsyncMock(return_value=True))
+    mock_context.args = ["f.zip"]
+
+    await cmd_remove(mock_update, mock_context)
+
+    args, _ = mock_update.message.reply_text.call_args
+    assert "Removed" in args[0]
+
+  async def test_reports_when_not_found(self, mock_update, mock_context,
+                                        monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.manager.remove_from_queue",
+                        AsyncMock(return_value=False))
+    mock_context.args = ["missing.zip"]
+
+    await cmd_remove(mock_update, mock_context)
+
+    args, _ = mock_update.message.reply_text.call_args
+    assert "No queue entry found" in args[0]
+
+  async def test_reports_usage_when_no_args(self, mock_update, mock_context,
+                                            monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    mock_context.args = []
+
+    await cmd_remove(mock_update, mock_context)
+
+    args, _ = mock_update.message.reply_text.call_args
+    assert "Usage" in args[0]
+
+  async def test_does_nothing_when_unauthorized(self, mock_update,
+                                                mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+
+    await cmd_remove(mock_update, mock_context)
 
     mock_update.message.reply_text.assert_not_awaited()
 
