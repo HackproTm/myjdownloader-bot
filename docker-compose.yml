@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   jdownloader:
     image: antlafarge/jdownloader:latest
