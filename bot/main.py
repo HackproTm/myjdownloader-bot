@@ -3,6 +3,7 @@
 import logging
 
 from dotenv import load_dotenv
+from telegram import BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 # load_dotenv must run BEFORE importing config (which reads os.environ)
@@ -18,10 +19,28 @@ from utils.logger import configure_logging  # noqa: E402
 configure_logging()
 logger = logging.getLogger(__name__)
 
+_COMMANDS = [
+  BotCommand("start", "Show help and usage"),
+  BotCommand("help", "Show help and usage"),
+  BotCommand("queue", "Add a download to the queue"),
+  BotCommand("list", "Show the queue with download percentage"),
+  BotCommand("status", "Show the queue with status text"),
+  BotCommand("remove", "Remove a download and delete its local file"),
+  BotCommand("accounts", "List configured premium accounts"),
+  BotCommand("addaccount", "Add a premium account"),
+  BotCommand("removeaccount", "Remove a premium account"),
+]
+
+
+async def _post_init(app: Application) -> None:
+  """Register the command menu shown by Telegram clients."""
+  await app.bot.set_my_commands(_COMMANDS)
+
 
 def main() -> None:
   """Start the Telegram bot."""
-  app = Application.builder().token(TELEGRAM_TOKEN).build()
+  app = Application.builder().token(TELEGRAM_TOKEN).post_init(
+    _post_init).build()
 
   # Register command and message handlers
   app.add_handler(CommandHandler("start", cmd_start))
