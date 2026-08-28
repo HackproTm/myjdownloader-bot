@@ -65,6 +65,7 @@ class JDownloaderManager:
 
   async def reconnect(self) -> None:
     """Reconnect to MyJDownloader."""
+    logger.info("Reconnecting to MyJDownloader...")
     async with self._lock:
       self._jd = None
       self._device = None

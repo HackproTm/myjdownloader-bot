@@ -29,8 +29,11 @@ logger = logging.getLogger(__name__)
 async def cmd_start(update: Update,
                     context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /start command."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized /start attempt", chat_id)
     return
+  logger.info("Chat %s: /start", chat_id)
 
   await update.message.reply_text(  # type: ignore[union-attr]
     "👋 *JDownloader Bot*\n\n"
@@ -60,8 +63,11 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_accounts(update: Update,
                        context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /accounts command - list configured premium accounts."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized /accounts attempt", chat_id)
     return
+  logger.info("Chat %s: /accounts", chat_id)
 
   try:
     accounts = await manager.list_accounts()
@@ -71,6 +77,9 @@ async def cmd_accounts(update: Update,
       f"❌ Could not list accounts:\n`{exc}`",
       parse_mode=ParseMode.MARKDOWN)
     return
+
+  logger.info("Chat %s: found %d configured account(s)", chat_id,
+              len(accounts))
 
   if not accounts:
     await update.message.reply_text(  # type: ignore[union-attr]
@@ -95,10 +104,10 @@ async def cmd_accounts(update: Update,
 async def cmd_add_account(update: Update,
                           context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /addaccount <hoster> <username> <password> command."""
-  if not is_authorized(update):
-    return
-
   chat_id = update.effective_chat.id  # type: ignore[union-attr]
+  if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized /addaccount attempt", chat_id)
+    return
 
   # Delete the command message right away so the password doesn't linger in chat history.
   try:
@@ -116,6 +125,8 @@ async def cmd_add_account(update: Update,
     return
 
   hoster, username, password = context.args  # type: ignore[misc]
+  logger.info("Chat %s: /addaccount hoster=%s username=%s", chat_id, hoster,
+              username)  # never log the password
 
   try:
     await manager.add_account(hoster, username, password)
@@ -128,6 +139,7 @@ async def cmd_add_account(update: Update,
     )
     return
 
+  logger.info("Chat %s: account added for %s (%s)", chat_id, hoster, username)
   await context.bot.send_message(
     chat_id=chat_id,
     text=f"✅ Account added for *{hoster}* (`{username}`).",
@@ -138,7 +150,9 @@ async def cmd_add_account(update: Update,
 async def cmd_remove_account(update: Update,
                              context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /removeaccount <uuid> command."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized /removeaccount attempt", chat_id)
     return
 
   args = context.args  # type: ignore[assignment]
@@ -150,6 +164,7 @@ async def cmd_remove_account(update: Update,
     return
 
   account_id = int(args[0])
+  logger.info("Chat %s: /removeaccount account_id=%s", chat_id, account_id)
 
   try:
     await manager.remove_account(account_id)
@@ -160,6 +175,7 @@ async def cmd_remove_account(update: Update,
       parse_mode=ParseMode.MARKDOWN)
     return
 
+  logger.info("Chat %s: account %s removed", chat_id, account_id)
   await update.message.reply_text(  # type: ignore[union-attr]
     f"🗑️ Account `{account_id}` removed.",
     parse_mode=ParseMode.MARKDOWN)
@@ -168,7 +184,9 @@ async def cmd_remove_account(update: Update,
 async def cmd_queue(update: Update,
                     context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /queue <url> [name] [force] command."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized /queue attempt", chat_id)
     return
 
   args = list(context.args or [])  # type: ignore[arg-type]
@@ -184,10 +202,14 @@ async def cmd_queue(update: Update,
 
   url = args[0]
   package_name = args[1] if len(args) > 1 else _default_package_name(url)
+  logger.info("Chat %s: /queue url=%s name=%s force=%s", chat_id, url,
+              package_name, force)
 
   if not force:
     existing = history.find_duplicate(url, package_name)
     if existing:
+      logger.info("Chat %s: duplicate detected (matched_by=%s)", chat_id,
+                  existing["matched_by"])
       matched = "URL" if existing["matched_by"] == "url" else "file name"
       await update.message.reply_text(  # type: ignore[union-attr]
         f"⚠️ This {matched} was already queued on {existing['added_at']} "
@@ -204,7 +226,9 @@ async def cmd_queue(update: Update,
 
 async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /list command - show the queue with download percentage."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized /list attempt", chat_id)
     return
 
   try:
@@ -216,6 +240,7 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
       parse_mode=ParseMode.MARKDOWN)
     return
 
+  logger.info("Chat %s: /list -> %d queue entries", chat_id, len(entries))
   await update.message.reply_text(  # type: ignore[union-attr]
     format_queue_list(entries),
     parse_mode=ParseMode.MARKDOWN)
@@ -224,7 +249,9 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_status(update: Update,
                      context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /status command - show the queue with status text."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized /status attempt", chat_id)
     return
 
   try:
@@ -236,6 +263,7 @@ async def cmd_status(update: Update,
       parse_mode=ParseMode.MARKDOWN)
     return
 
+  logger.info("Chat %s: /status -> %d queue entries", chat_id, len(entries))
   await update.message.reply_text(  # type: ignore[union-attr]
     format_status_list(entries),
     parse_mode=ParseMode.MARKDOWN)
@@ -244,7 +272,9 @@ async def cmd_status(update: Update,
 async def cmd_remove(update: Update,
                      context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle /remove <name> command - remove a download and its local file."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized /remove attempt", chat_id)
     return
 
   args = context.args  # type: ignore[assignment]
@@ -255,6 +285,7 @@ async def cmd_remove(update: Update,
     return
 
   name = " ".join(args)
+  logger.info("Chat %s: /remove name=%s", chat_id, name)
 
   try:
     removed = await manager.remove_from_queue(name)
@@ -266,11 +297,13 @@ async def cmd_remove(update: Update,
     return
 
   if not removed:
+    logger.info("Chat %s: no queue entry found for '%s'", chat_id, name)
     await update.message.reply_text(  # type: ignore[union-attr]
       f"⚠️ No queue entry found matching `{name}`.",
       parse_mode=ParseMode.MARKDOWN)
     return
 
+  logger.info("Chat %s: removed '%s' from the queue", chat_id, name)
   await update.message.reply_text(  # type: ignore[union-attr]
     f"🗑️ Removed `{name}` from the queue and JDownloader.",
     parse_mode=ParseMode.MARKDOWN)
@@ -282,7 +315,9 @@ async def cmd_remove(update: Update,
 async def handle_message(update: Update,
                          context: ContextTypes.DEFAULT_TYPE) -> None:
   """Handle incoming messages with URLs."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized message rejected", chat_id)
     await update.message.reply_text("⛔ You are not allowed to use this bot."
                                     )  # type: ignore[union-attr]
     return
@@ -299,6 +334,8 @@ async def handle_message(update: Update,
   # Remaining text after removing the URL is treated as package name.
   remainder = text.replace(url, "").strip()
   package_name = remainder if remainder else _default_package_name(url)
+  logger.info("Chat %s: received URL %s (package=%s)", chat_id, url,
+              package_name)
 
   await _run_download(update, context, url, package_name)
 
@@ -320,6 +357,8 @@ async def _run_download(
 ) -> None:
   """Execute the download workflow."""
   chat_id = update.effective_chat.id  # type: ignore[union-attr]
+  logger.info("Chat %s: starting download url=%s package=%s", chat_id, url,
+              package_name)
 
   status_msg = await update.message.reply_text(  # type: ignore[union-attr]
     f"⏳ *Starting download...*\n`{url}`",
@@ -374,6 +413,8 @@ async def _run_download(
   # 4. Send file or notify if too large
   file_size = os.path.getsize(file_path)
   filename = os.path.basename(file_path)
+  logger.info("Chat %s: download finished file=%s size=%d bytes", chat_id,
+              filename, file_size)
 
   if file_size > MAX_FILE_SIZE_BYTES:
     await status_msg.edit_text(
@@ -399,6 +440,7 @@ async def _run_download(
         parse_mode=ParseMode.MARKDOWN,
       )
     await status_msg.delete()
+    logger.info("Chat %s: file '%s' sent successfully", chat_id, filename)
   except Exception as exc:
     logger.error("Error sending file: %s", exc)
     await status_msg.edit_text(

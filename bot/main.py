@@ -35,6 +35,8 @@ _COMMANDS = [
 async def _post_init(app: Application) -> None:
   """Register the command menu shown by Telegram clients."""
   await app.bot.set_my_commands(_COMMANDS)
+  logger.info("Command menu registered with Telegram (%d commands)",
+              len(_COMMANDS))
 
 
 def main() -> None:
