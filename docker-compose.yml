@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  jdownloader:
+    image: antlafarge/jdownloader:latest
+    container_name: jdownloader
+    restart: unless-stopped
+    environment:
+      JD_EMAIL: ${MYJD_EMAIL}
+      JD_PASSWORD: ${MYJD_PASSWORD}
+      JD_DEVICENAME: ${MYJD_DEVICE_NAME:-MyJDownloader}
+    volumes:
+      - ./downloads:/downloads
+      - jd_config:/opt/JDownloader/cfg
+
+  bot:
+    build: ./bot
+    container_name: jd-telegram-bot
+    restart: unless-stopped
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      MYJD_EMAIL: ${MYJD_EMAIL}
+      MYJD_PASSWORD: ${MYJD_PASSWORD}
+      MYJD_DEVICE_NAME: ${MYJD_DEVICE_NAME:-MyJDownloader}
+      ALLOWED_CHAT_IDS: ${ALLOWED_CHAT_IDS:-}
+      DOWNLOADS_PATH: /downloads
+      POLL_INTERVAL: ${POLL_INTERVAL:-10}
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
+    volumes:
+      - ./downloads:/downloads
+    depends_on:
+      - jdownloader
+
+volumes:
+  jd_config:

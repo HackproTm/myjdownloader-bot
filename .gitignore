@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# Downloads (avoid versioning large files)
+downloads/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.pytest_cache/
+
+# Local Docker volumes
+jdownloader/cfg/
