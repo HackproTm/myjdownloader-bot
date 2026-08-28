@@ -160,6 +160,16 @@ source .venv/bin/activate
 yapf -i -r --exclude '.venv/*' --exclude '__pycache__/*' .
 ```
 
+### Linting
+
+Static checks (unused imports, undefined names, common bugs) run via [ruff](https://github.com/astral-sh/ruff) (`bot/pyproject.toml`).
+
+```bash
+cd bot
+source .venv/bin/activate
+ruff check .
+```
+
 ## License
 
 This project does not currently specify a license.

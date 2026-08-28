@@ -3,7 +3,6 @@
 import logging
 import os
 import time
-from typing import Optional
 
 from telegram import Update
 from telegram.constants import ParseMode
@@ -19,7 +18,6 @@ from utils import (
   format_status_list,
   is_authorized,
   progress_bar,
-  validators,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,7 +81,8 @@ async def cmd_accounts(update: Update,
 
   if not accounts:
     await update.message.reply_text(  # type: ignore[union-attr]
-      "No premium accounts configured.\nUse `/addaccount <hoster> <username> <password>` to add one.",
+      "No premium accounts configured.\n"
+      "Use `/addaccount <hoster> <username> <password>` to add one.",
       parse_mode=ParseMode.MARKDOWN,
     )
     return

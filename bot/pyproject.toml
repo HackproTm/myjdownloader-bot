@@ -1,0 +1,14 @@
+[tool.ruff]
+line-length = 100
+indent-width = 2
+target-version = "py312"
+extend-exclude = [".venv", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = [
+  "E731", # allow lambda assignments (used in a couple of tests/handlers)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"] # assert False is fine in tests
