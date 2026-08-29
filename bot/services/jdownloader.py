@@ -86,35 +86,171 @@ class JDownloaderManager:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(_executor, fn, *args)
 
-  # ── Add download ──────────────────────────────────────────────────────────
+  # ── Collect & select ──────────────────────────────────────────────────────
 
-  async def add_download(self, url: str, package_name: str) -> DownloadJob:
+  async def collect_link(self, url: str, package_name: Optional[str]) -> dict:
     """
-    Add a download to the MyJDownloader queue.
+    Add a URL to the LinkGrabber (without starting the download yet) and
+    report the selectable options (files/resolutions/formats) it offers.
 
     Args:
-      url: URL to download
-      package_name: Name for the download package
+      url: URL to add
+      package_name: Requested package name, or None to let JDownloader name
+        it automatically from site metadata (e.g. the real video title)
 
     Returns:
-      DownloadJob object tracking the download
+      Dict with "package_uuid", "package_name" (as resolved by JDownloader),
+      and "options" (list of dicts with "link_uuid", "variant_id", "label")
 
     Raises:
-      Exception: If adding the download fails
+      RuntimeError: If the link could not be added (offline, unsupported, etc.)
     """
     await self.ensure_connected()
-    await self._run(self._add_link_sync, url, package_name)
-    return DownloadJob(url=url, package_name=package_name)
 
-  def _add_link_sync(self, url: str, package_name: str) -> None:
-    """Synchronously add a link to the LinkGrabber."""
+    before = await self._run(self._query_linkgrabber_packages)
+    before_uuids = {pkg["uuid"] for pkg in before}
+
+    await self._run(self._add_link_sync, url, package_name)
+    await self._wait_until_collected()
+
+    after = await self._run(self._query_linkgrabber_packages)
+    new_pkgs = [pkg for pkg in after if pkg["uuid"] not in before_uuids]
+    if not new_pkgs:
+      raise RuntimeError(
+        "The link could not be added (offline, unsupported, or duplicate).")
+
+    pkg = new_pkgs[0]
+    links = await self._run(self._query_linkgrabber_links_for_package,
+                            pkg["uuid"])
+    options = await self._build_options(links)
+
+    return {
+      "package_uuid": pkg["uuid"],
+      "package_name": pkg["name"],
+      "options": options,
+    }
+
+  def _add_link_sync(self, url: str, package_name: Optional[str]) -> None:
+    """Synchronously add a link to the LinkGrabber (not started yet)."""
     self._device.linkgrabber.add_links([{
-      "autostart": True,
-      "links": url,
-      "packageName": package_name,
-      "destinationFolder": DOWNLOADS_PATH,
-      "overwritePackagizerRules": True,
+      "autostart":
+      False,
+      "links":
+      url,
+      "packageName":
+      package_name,
+      "destinationFolder":
+      DOWNLOADS_PATH,
+      "overwritePackagizerRules":
+      bool(package_name),
     }])
+
+  async def _wait_until_collected(self, max_wait: float = 15.0) -> None:
+    """Wait for the LinkGrabber to finish resolving the added link."""
+    await asyncio.sleep(1.5)  # Give JD a moment to start collecting.
+    elapsed = 0.0
+    while elapsed < max_wait:
+      collecting = await self._run(self._is_collecting_sync)
+      if not collecting:
+        return
+      await asyncio.sleep(1)
+      elapsed += 1
+
+  def _is_collecting_sync(self) -> bool:
+    """Synchronously check if the LinkGrabber is still resolving links."""
+    return bool(self._device.linkgrabber.is_collecting())
+
+  def _query_linkgrabber_links_for_package(self, package_uuid: int) -> list:
+    """Query links of a specific LinkGrabber package, including variants."""
+    return (self._device.linkgrabber.query_links(
+      [{
+        "packageUUIDs": [package_uuid],
+        "name": True,
+        "url": True,
+        "variant": True,
+        "variants": True,
+      }]) or [])
+
+  async def _build_options(self, links: list) -> list:
+    """Build the list of selectable options (link + variant) for a package."""
+    options = []
+    for link in links:
+      variants = []
+      if link.get("variants"):
+        variants = await self._run(self._get_variants_sync, link["uuid"])
+
+      if len(variants) > 1:
+        for variant in variants:
+          variant_name = variant.get("name", variant.get("id", "variant"))
+          options.append({
+            "link_uuid":
+            link["uuid"],
+            "variant_id":
+            variant.get("id"),
+            "label":
+            f"{link.get('name', 'file')} — {variant_name}",
+          })
+      else:
+        options.append({
+          "link_uuid": link["uuid"],
+          "variant_id": None,
+          "label": link.get("name", "file"),
+        })
+    return options
+
+  def _get_variants_sync(self, link_uuid: int) -> list:
+    """Synchronously get the available variants of a link."""
+    return self._device.linkgrabber.get_variants([link_uuid]) or []
+
+  async def finalize_selection(
+    self,
+    package_uuid: int,
+    chosen_link_uuid: Optional[int],
+    variant_id: Optional[str],
+    final_name: str,
+  ) -> None:
+    """
+    Keep only the chosen link in a LinkGrabber package, apply its variant,
+    rename the package, and move it to the download queue.
+
+    Args:
+      package_uuid: LinkGrabber package UUID
+      chosen_link_uuid: UUID of the link to keep (None keeps everything)
+      variant_id: Variant ID to select on the chosen link, if any
+      final_name: Name to assign to the package before downloading
+    """
+    await self.ensure_connected()
+
+    if chosen_link_uuid is not None:
+      all_links = await self._run(self._query_linkgrabber_links_for_package,
+                                  package_uuid)
+      other_ids = [
+        link["uuid"] for link in all_links if link["uuid"] != chosen_link_uuid
+      ]
+      if other_ids:
+        await self._run(self._remove_linkgrabber_links_sync, other_ids)
+
+      if variant_id:
+        await self._run(self._set_variant_sync, chosen_link_uuid, variant_id)
+
+    await self._run(self._rename_package_sync, package_uuid, final_name)
+    await self._run(self._move_to_downloadlist_sync, package_uuid)
+
+  def _remove_linkgrabber_links_sync(self, link_ids: list) -> None:
+    """Synchronously remove links (not the whole package) from the LinkGrabber."""
+    self._device.linkgrabber.remove_links(link_ids, [])
+
+  def _set_variant_sync(self, link_uuid: int, variant_id: str) -> None:
+    """Synchronously select a variant for a link (not wrapped by myjdapi)."""
+    self._device.action("/linkgrabberv2/setVariant", [variant_id, [link_uuid]])
+
+  def _rename_package_sync(self, package_uuid: int, name: str) -> None:
+    """Synchronously rename a LinkGrabber package."""
+    self._device.linkgrabber.rename_package(package_uuid, name)
+
+  def _move_to_downloadlist_sync(self, package_uuid: int) -> None:
+    """Synchronously move a package from LinkGrabber to the download queue."""
+    self._device.linkgrabber.move_to_downloadlist([], [package_uuid])
 
   # ── Monitoring ────────────────────────────────────────────────────────────
 

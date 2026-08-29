@@ -4,7 +4,13 @@ import logging
 
 from dotenv import load_dotenv
 from telegram import BotCommand
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import (
+  Application,
+  CallbackQueryHandler,
+  CommandHandler,
+  MessageHandler,
+  filters,
+)
 
 # load_dotenv must run BEFORE importing config (which reads os.environ)
 load_dotenv()
@@ -12,7 +18,7 @@ load_dotenv()
 from config import TELEGRAM_TOKEN  # noqa: E402
 from handlers import (  # noqa: E402
   cmd_accounts, cmd_add_account, cmd_help, cmd_list, cmd_queue, cmd_remove,
-  cmd_remove_account, cmd_start, cmd_status, handle_message,
+  cmd_remove_account, cmd_start, cmd_status, handle_message, on_select_option,
 )
 from utils.logger import configure_logging  # noqa: E402
 
@@ -41,8 +47,9 @@ async def _post_init(app: Application) -> None:
 
 def main() -> None:
   """Start the Telegram bot."""
-  app = Application.builder().token(TELEGRAM_TOKEN).post_init(
-    _post_init).build()
+  # concurrent_updates lets /list, /status, etc. respond while a download is in progress.
+  app = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(
+    True).post_init(_post_init).build()
 
   # Register command and message handlers
   app.add_handler(CommandHandler("start", cmd_start))
@@ -54,6 +61,7 @@ def main() -> None:
   app.add_handler(CommandHandler("accounts", cmd_accounts))
   app.add_handler(CommandHandler("addaccount", cmd_add_account))
   app.add_handler(CommandHandler("removeaccount", cmd_remove_account))
+  app.add_handler(CallbackQueryHandler(on_select_option, pattern=r"^dlopt:"))
   app.add_handler(
     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

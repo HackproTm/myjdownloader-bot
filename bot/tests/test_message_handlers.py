@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-from data import DownloadJob
 from handlers.message_handlers import (
   _default_package_name,
   cmd_accounts,
@@ -15,6 +14,7 @@ from handlers.message_handlers import (
   cmd_start,
   cmd_status,
   handle_message,
+  on_select_option,
 )
 
 
@@ -419,15 +419,27 @@ class TestRunDownloadFlow:
     file_path = tmp_path / "result.zip"
     file_path.write_bytes(b"x" * 1024)
 
-    job = DownloadJob(url="http://x.com/f.zip", package_name="f.zip")
     status_msg = MagicMock()
     status_msg.edit_text = AsyncMock()
     status_msg.delete = AsyncMock()
     mock_update.message.reply_text = AsyncMock(return_value=status_msg)
     mock_update.message.text = "http://x.com/f.zip"
 
-    monkeypatch.setattr("handlers.message_handlers.manager.add_download",
-                        AsyncMock(return_value=job))
+    monkeypatch.setattr(
+      "handlers.message_handlers.manager.collect_link",
+      AsyncMock(
+        return_value={
+          "package_uuid": 1,
+          "package_name": "f.zip",
+          "options": [{
+            "link_uuid": 10,
+            "variant_id": None,
+            "label": "f.zip"
+          }],
+        }),
+    )
+    monkeypatch.setattr("handlers.message_handlers.manager.finalize_selection",
+                        AsyncMock())
     monkeypatch.setattr(
       "handlers.message_handlers.manager.monitor_job",
       AsyncMock(return_value=str(file_path)),
@@ -438,8 +450,8 @@ class TestRunDownloadFlow:
     mock_context.bot.send_document.assert_awaited_once()
     status_msg.delete.assert_awaited_once()
 
-  async def test_add_download_failure_reports_error(self, mock_update,
-                                                    mock_context, monkeypatch):
+  async def test_collect_failure_reports_error(self, mock_update, mock_context,
+                                               monkeypatch):
     monkeypatch.setattr("handlers.message_handlers.is_authorized",
                         lambda update: True)
 
@@ -449,7 +461,7 @@ class TestRunDownloadFlow:
     mock_update.message.text = "http://x.com/f.zip"
 
     monkeypatch.setattr(
-      "handlers.message_handlers.manager.add_download",
+      "handlers.message_handlers.manager.collect_link",
       AsyncMock(side_effect=RuntimeError("boom")),
     )
 
@@ -457,7 +469,7 @@ class TestRunDownloadFlow:
 
     status_msg.edit_text.assert_awaited_once()
     args, _ = status_msg.edit_text.call_args
-    assert "Could not start download" in args[0]
+    assert "Could not add the link" in args[0]
 
   async def test_oversized_file_is_not_sent(self, mock_update, mock_context,
                                             monkeypatch, tmp_path):
@@ -468,14 +480,26 @@ class TestRunDownloadFlow:
     file_path = tmp_path / "big.zip"
     file_path.write_bytes(b"x" * 1024)
 
-    job = DownloadJob(url="http://x.com/big.zip", package_name="big.zip")
     status_msg = MagicMock()
     status_msg.edit_text = AsyncMock()
     mock_update.message.reply_text = AsyncMock(return_value=status_msg)
     mock_update.message.text = "http://x.com/big.zip"
 
-    monkeypatch.setattr("handlers.message_handlers.manager.add_download",
-                        AsyncMock(return_value=job))
+    monkeypatch.setattr(
+      "handlers.message_handlers.manager.collect_link",
+      AsyncMock(
+        return_value={
+          "package_uuid": 1,
+          "package_name": "big.zip",
+          "options": [{
+            "link_uuid": 10,
+            "variant_id": None,
+            "label": "big.zip"
+          }],
+        }),
+    )
+    monkeypatch.setattr("handlers.message_handlers.manager.finalize_selection",
+                        AsyncMock())
     monkeypatch.setattr(
       "handlers.message_handlers.manager.monitor_job",
       AsyncMock(return_value=str(file_path)),
@@ -486,3 +510,121 @@ class TestRunDownloadFlow:
     mock_context.bot.send_document.assert_not_awaited()
     args, _ = status_msg.edit_text.call_args_list[-1]
     assert "exceeds" in args[0]
+
+  async def test_multiple_options_asks_user_to_choose(self, mock_update,
+                                                      mock_context,
+                                                      monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+
+    status_msg = MagicMock()
+    status_msg.edit_text = AsyncMock()
+    mock_update.message.reply_text = AsyncMock(return_value=status_msg)
+    mock_update.message.text = "https://www.youtube.com/watch?v=abc"
+    mock_context.chat_data = {}
+
+    monkeypatch.setattr(
+      "handlers.message_handlers.manager.collect_link",
+      AsyncMock(
+        return_value={
+          "package_uuid":
+          1,
+          "package_name":
+          "cool video",
+          "options": [
+            {
+              "link_uuid": 10,
+              "variant_id": "1080p",
+              "label": "video — 1080p"
+            },
+            {
+              "link_uuid": 10,
+              "variant_id": "720p",
+              "label": "video — 720p"
+            },
+          ],
+        }),
+    )
+
+    await handle_message(mock_update, mock_context)
+
+    status_msg.edit_text.assert_awaited_once()
+    _, kwargs = status_msg.edit_text.call_args
+    assert "reply_markup" in kwargs
+    assert "1" in mock_context.chat_data["pending_downloads"]
+    assert mock_context.chat_data["pending_downloads"]["1"][
+      "final_name"] == "YouTube - cool video"
+
+
+class TestOnSelectOption:
+
+  def _make_callback_update(self, data: str):
+    """Build a MagicMock update with a callback_query for the given data."""
+    update = MagicMock()
+    update.effective_chat.id = 12345
+    update.callback_query.data = data
+    update.callback_query.answer = AsyncMock()
+    update.callback_query.edit_message_text = AsyncMock()
+    update.callback_query.message = MagicMock()
+    update.callback_query.message.edit_text = AsyncMock()
+    return update
+
+  async def test_starts_download_for_selected_option(self, mock_context,
+                                                     monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    finalize_mock = AsyncMock()
+    monkeypatch.setattr("handlers.message_handlers.manager.finalize_selection",
+                        finalize_mock)
+    monkeypatch.setattr(
+      "handlers.message_handlers.manager.monitor_job",
+      AsyncMock(side_effect=RuntimeError("stop after finalize")),
+    )
+    update = self._make_callback_update("dlopt:1:0")
+    mock_context.chat_data = {
+      "pending_downloads": {
+        "1": {
+          "url":
+          "https://youtube.com/watch?v=abc",
+          "final_name":
+          "YouTube - cool video",
+          "options": [{
+            "link_uuid": 10,
+            "variant_id": "1080p",
+            "label": "video — 1080p"
+          }],
+        }
+      }
+    }
+
+    await on_select_option(update, mock_context)
+
+    update.callback_query.answer.assert_awaited_once()
+    finalize_mock.assert_awaited_once_with(1, 10, "1080p",
+                                           "YouTube - cool video")
+    assert "1" not in mock_context.chat_data["pending_downloads"]
+
+  async def test_expired_selection_is_reported(self, mock_context,
+                                               monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    update = self._make_callback_update("dlopt:999:0")
+    mock_context.chat_data = {"pending_downloads": {}}
+
+    await on_select_option(update, mock_context)
+
+    update.callback_query.edit_message_text.assert_awaited_once()
+    args, _ = update.callback_query.edit_message_text.call_args
+    assert "expired" in args[0]
+
+  async def test_does_nothing_when_unauthorized(self, mock_context,
+                                                monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+    update = self._make_callback_update("dlopt:1:0")
+    mock_context.chat_data = {"pending_downloads": {}}
+
+    await on_select_option(update, mock_context)
+
+    update.callback_query.answer.assert_awaited_once_with("Not authorized.",
+                                                          show_alert=True)

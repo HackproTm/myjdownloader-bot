@@ -3,8 +3,9 @@
 import logging
 import os
 import time
+from typing import Optional
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
@@ -12,6 +13,7 @@ from config import MAX_FILE_SIZE_BYTES
 from data import DownloadJob, history
 from services import manager
 from utils import (
+  detect_platform,
   extract_urls,
   format_queue_list,
   format_size,
@@ -200,12 +202,13 @@ async def cmd_queue(update: Update,
     return
 
   url = args[0]
-  package_name = args[1] if len(args) > 1 else _default_package_name(url)
+  package_name = args[1] if len(args) > 1 else None
+  dedup_name = package_name or _default_package_name(url)
   logger.info("Chat %s: /queue url=%s name=%s force=%s", chat_id, url,
-              package_name, force)
+              dedup_name, force)
 
   if not force:
-    existing = history.find_duplicate(url, package_name)
+    existing = history.find_duplicate(url, dedup_name)
     if existing:
       logger.info("Chat %s: duplicate detected (matched_by=%s)", chat_id,
                   existing["matched_by"])
@@ -214,12 +217,12 @@ async def cmd_queue(update: Update,
         f"⚠️ This {matched} was already queued on {existing['added_at']} "
         f"as `{existing['package_name']}`.\n"
         f"Resend with `force` at the end to download it again:\n"
-        f"`/queue {url} {package_name} force`",
+        f"`/queue {url} {dedup_name} force`",
         parse_mode=ParseMode.MARKDOWN,
       )
       return
 
-  history.record(url, package_name)
+  history.record(url, dedup_name)
   await _run_download(update, context, url, package_name)
 
 
@@ -330,19 +333,68 @@ async def handle_message(update: Update,
     return
 
   url = urls[0]
-  # Remaining text after removing the URL is treated as package name.
+  # Remaining text after removing the URL is treated as the requested package name.
   remainder = text.replace(url, "").strip()
-  package_name = remainder if remainder else _default_package_name(url)
-  logger.info("Chat %s: received URL %s (package=%s)", chat_id, url,
-              package_name)
+  requested_name = remainder or None
+  logger.info("Chat %s: received URL %s (requested_name=%s)", chat_id, url,
+              requested_name)
 
-  await _run_download(update, context, url, package_name)
+  await _run_download(update, context, url, requested_name)
 
 
 def _default_package_name(url: str) -> str:
   """Generate a default package name from URL."""
   name = url.rstrip("/").split("/")[-1].split("?")[0]
   return name if name else f"download_{int(time.time())}"
+
+
+# ─── Selection Callback ────────────────────────────────────────────────────────
+
+
+async def on_select_option(update: Update,
+                           context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle inline-keyboard taps when a link offers multiple files/resolutions."""
+  query = update.callback_query
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
+  if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized selection attempt", chat_id)
+    await query.answer("Not authorized.", show_alert=True)
+    return
+  await query.answer()
+
+  _, package_uuid_str, idx_str = query.data.split(":", 2)
+  pending_all = context.chat_data.setdefault(  # type: ignore[union-attr]
+    "pending_downloads", {})
+  pending = pending_all.pop(package_uuid_str, None)
+  if pending is None:
+    await query.edit_message_text("⚠️ This selection has expired.")
+    return
+
+  option = pending["options"][int(idx_str)]
+  package_uuid = int(package_uuid_str)
+  final_name = pending["final_name"]
+  url = pending["url"]
+  logger.info("Chat %s: selected '%s' for %s", chat_id, option["label"],
+              final_name)
+
+  await query.edit_message_text(
+    f"⏳ *Starting download...*\n`{final_name}`",
+    parse_mode=ParseMode.MARKDOWN,
+  )
+
+  try:
+    await manager.finalize_selection(package_uuid, option["link_uuid"],
+                                     option["variant_id"], final_name)
+  except Exception as exc:
+    logger.error("Error finalizing selection: %s", exc)
+    await query.edit_message_text(f"❌ Could not start download:\n`{exc}`",
+                                  parse_mode=ParseMode.MARKDOWN)
+    return
+
+  job = DownloadJob(url=url,
+                    package_name=final_name,
+                    package_uuid=package_uuid)
+  await _monitor_and_deliver(query.message, chat_id, context, job)
 
 
 # ─── Download Flow ────────────────────────────────────────────────────────────
@@ -352,35 +404,89 @@ async def _run_download(
   update: Update,
   context: ContextTypes.DEFAULT_TYPE,
   url: str,
-  package_name: str,
+  requested_name: Optional[str] = None,
 ) -> None:
-  """Execute the download workflow."""
+  """
+  Add a URL to JDownloader and either start the download right away, or ask
+  the user to pick a file/resolution when the link offers more than one.
+  """
   chat_id = update.effective_chat.id  # type: ignore[union-attr]
-  logger.info("Chat %s: starting download url=%s package=%s", chat_id, url,
-              package_name)
+  logger.info("Chat %s: collecting url=%s requested_name=%s", chat_id, url,
+              requested_name)
 
   status_msg = await update.message.reply_text(  # type: ignore[union-attr]
-    f"⏳ *Starting download...*\n`{url}`",
+    f"🔎 *Looking up...*\n`{url}`",
     parse_mode=ParseMode.MARKDOWN,
   )
 
-  # 1. Add link to JDownloader
   try:
-    job = await manager.add_download(url, package_name)
+    collected = await manager.collect_link(url, requested_name)
   except Exception as exc:
-    logger.error("Error adding download: %s", exc)
+    logger.error("Error collecting link: %s", exc)
     await status_msg.edit_text(
-      f"❌ Could not start download:\n`{exc}`",
+      f"❌ Could not add the link:\n`{exc}`",
       parse_mode=ParseMode.MARKDOWN,
     )
     return
 
+  package_uuid = collected["package_uuid"]
+  options = collected["options"]
+  base_name = requested_name or collected[
+    "package_name"] or _default_package_name(url)
+  platform = detect_platform(url)
+  final_name = f"{platform} - {base_name}" if platform else base_name
+
+  if len(options) <= 1:
+    chosen = options[0] if options else {"link_uuid": None, "variant_id": None}
+    try:
+      await manager.finalize_selection(package_uuid, chosen["link_uuid"],
+                                       chosen["variant_id"], final_name)
+    except Exception as exc:
+      logger.error("Error finalizing download: %s", exc)
+      await status_msg.edit_text(
+        f"❌ Could not start download:\n`{exc}`",
+        parse_mode=ParseMode.MARKDOWN,
+      )
+      return
+
+    job = DownloadJob(url=url,
+                      package_name=final_name,
+                      package_uuid=package_uuid)
+    await _monitor_and_deliver(status_msg, chat_id, context, job)
+    return
+
+  # Multiple files/resolutions available: let the user pick one.
+  context.chat_data.setdefault(  # type: ignore[union-attr]
+    "pending_downloads", {})[str(package_uuid)] = {
+      "url": url,
+      "final_name": final_name,
+      "options": options,
+    }
+  keyboard = [[
+    InlineKeyboardButton(opt["label"][:60],
+                         callback_data=f"dlopt:{package_uuid}:{i}")
+  ] for i, opt in enumerate(options)]
+  logger.info("Chat %s: %d option(s) available for %s, asking user", chat_id,
+              len(options), final_name)
   await status_msg.edit_text(
-    f"📥 *Downloading:* `{package_name}`\n_Waiting for progress data..._",
+    f"📋 *Multiple files available for* `{final_name}`\nChoose one:",
+    parse_mode=ParseMode.MARKDOWN,
+    reply_markup=InlineKeyboardMarkup(keyboard),
+  )
+
+
+async def _monitor_and_deliver(
+  status_msg,
+  chat_id: int,
+  context: ContextTypes.DEFAULT_TYPE,
+  job: DownloadJob,
+) -> None:
+  """Monitor a queued download and deliver the resulting file to the chat."""
+  await status_msg.edit_text(
+    f"📥 *Downloading:* `{job.package_name}`\n_Waiting for progress data..._",
     parse_mode=ParseMode.MARKDOWN,
   )
 
-  # 2. Progress callback -> updates status message
   async def on_progress(job: DownloadJob) -> None:
     """Update progress message."""
     if job.bytes_total == 0:
@@ -398,7 +504,6 @@ async def _run_download(
     except Exception:
       pass  # Message might be unchanged (flood control, etc.).
 
-  # 3. Wait until completion
   try:
     file_path = await manager.monitor_job(job, on_progress=on_progress)
   except Exception as exc:
@@ -409,7 +514,6 @@ async def _run_download(
     )
     return
 
-  # 4. Send file or notify if too large
   file_size = os.path.getsize(file_path)
   filename = os.path.basename(file_path)
   logger.info("Chat %s: download finished file=%s size=%d bytes", chat_id,

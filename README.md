@@ -8,10 +8,13 @@ Send a URL to the bot, it queues the download in JDownloader, tracks progress wi
 
 - 📥 Add downloads to JDownloader just by sending a URL to the bot
 - 🏷️ Optional custom file name (`<url> <filename>`)
+- 🎛️ When a link offers multiple files/resolutions (e.g. a YouTube video with several
+  qualities, audio-only, subtitles, thumbnail), the bot asks you which one to download
+- 🏷️ Package names in JDownloader are tagged with the detected platform (YouTube, Instagram, X, Facebook, etc.)
 - 📊 Live progress updates (percentage, size, status) in Telegram
 - 📤 Automatic upload of the finished file back to the chat
-- � Queue management commands (`/queue`, `/list`, `/status`, `/remove`) with duplicate-download detection
-- �🔒 Optional chat allow-list (`ALLOWED_CHAT_IDS`) to restrict who can use the bot
+- 📋 Queue management commands (`/queue`, `/list`, `/status`, `/remove`) with duplicate-download detection
+- 🔒 Optional chat allow-list (`ALLOWED_CHAT_IDS`) to restrict who can use the bot
 - 🐳 Fully containerized with Docker Compose (bot + JDownloader)
 
 ## Tech Stack

@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-from data import DownloadJob
 from services.jdownloader import (
   JDownloaderManager,
   _find_by_name,
@@ -46,20 +45,161 @@ class TestFindByUuidOrName:
     assert _find_by_uuid_or_name(packages, 999, "z") is None
 
 
-class TestAddDownload:
+class TestCollectLink:
 
-  async def test_returns_download_job(self, monkeypatch):
+  async def test_returns_package_info_and_options(self, monkeypatch):
     manager = JDownloaderManager()
     monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
-    monkeypatch.setattr(manager, "_run", AsyncMock())
+    monkeypatch.setattr(manager, "_wait_until_collected", AsyncMock())
 
-    job = await manager.add_download("http://x.com/f.zip", "f.zip")
+    calls = {"n": 0}
 
-    assert isinstance(job, DownloadJob)
-    assert job.url == "http://x.com/f.zip"
-    assert job.package_name == "f.zip"
-    manager.ensure_connected.assert_awaited_once()
-    manager._run.assert_awaited_once()
+    async def fake_run(fn, *args):
+      calls["n"] += 1
+      name = fn.__name__
+      if name == "_query_linkgrabber_packages":
+        # First call: before adding. Second call: after adding.
+        return [] if calls["n"] == 1 else [{"uuid": 1, "name": "video.mp4"}]
+      if name == "_add_link_sync":
+        return None
+      if name == "_query_linkgrabber_links_for_package":
+        return [{"uuid": 10, "name": "video.mp4", "variants": False}]
+      raise AssertionError(f"Unexpected call to {name}")
+
+    monkeypatch.setattr(manager, "_run", fake_run)
+
+    result = await manager.collect_link("http://x.com/f.zip", "video.mp4")
+
+    assert result["package_uuid"] == 1
+    assert result["package_name"] == "video.mp4"
+    assert result["options"] == [{
+      "link_uuid": 10,
+      "variant_id": None,
+      "label": "video.mp4",
+    }]
+
+  async def test_raises_when_no_new_package_appears(self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    monkeypatch.setattr(manager, "_wait_until_collected", AsyncMock())
+    monkeypatch.setattr(
+      manager,
+      "_run",
+      AsyncMock(return_value=[{
+        "uuid": 1,
+        "name": "existing"
+      }]),
+    )
+
+    try:
+      await manager.collect_link("http://x.com/offline.zip", "offline.zip")
+      assert False, "expected RuntimeError"
+    except RuntimeError:
+      pass
+
+
+class TestBuildOptions:
+
+  async def test_single_link_without_variants_is_one_option(self, monkeypatch):
+    manager = JDownloaderManager()
+    links = [{"uuid": 10, "name": "file.zip", "variants": False}]
+
+    options = await manager._build_options(links)
+
+    assert options == [{
+      "link_uuid": 10,
+      "variant_id": None,
+      "label": "file.zip",
+    }]
+
+  async def test_link_with_multiple_variants_expands_to_many_options(
+      self, monkeypatch):
+    manager = JDownloaderManager()
+    links = [{"uuid": 10, "name": "video", "variants": True}]
+    monkeypatch.setattr(
+      manager,
+      "_run",
+      AsyncMock(return_value=[
+        {
+          "id": "1080p",
+          "name": "1080p"
+        },
+        {
+          "id": "720p",
+          "name": "720p"
+        },
+      ]),
+    )
+
+    options = await manager._build_options(links)
+
+    assert len(options) == 2
+    assert options[0] == {
+      "link_uuid": 10,
+      "variant_id": "1080p",
+      "label": "video — 1080p"
+    }
+
+
+class TestFinalizeSelection:
+
+  async def test_removes_other_links_sets_variant_renames_and_queues(
+      self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    run_mock = AsyncMock(side_effect=lambda fn, *args: fn(*args))
+    monkeypatch.setattr(manager, "_run", run_mock)
+    monkeypatch.setattr(
+      manager,
+      "_query_linkgrabber_links_for_package",
+      lambda uuid: [{
+        "uuid": 10
+      }, {
+        "uuid": 11
+      }],
+    )
+    monkeypatch.setattr(manager, "_remove_linkgrabber_links_sync", MagicMock())
+    monkeypatch.setattr(manager, "_set_variant_sync", MagicMock())
+    monkeypatch.setattr(manager, "_rename_package_sync", MagicMock())
+    monkeypatch.setattr(manager, "_move_to_downloadlist_sync", MagicMock())
+
+    await manager.finalize_selection(1, 10, "1080p", "YouTube - video")
+
+    manager._remove_linkgrabber_links_sync.assert_called_once_with([11])
+    manager._set_variant_sync.assert_called_once_with(10, "1080p")
+    manager._rename_package_sync.assert_called_once_with(1, "YouTube - video")
+    manager._move_to_downloadlist_sync.assert_called_once_with(1)
+
+  async def test_skips_link_management_when_no_link_chosen(self, monkeypatch):
+    manager = JDownloaderManager()
+    monkeypatch.setattr(manager, "ensure_connected", AsyncMock())
+    run_mock = AsyncMock(side_effect=lambda fn, *args: fn(*args))
+    monkeypatch.setattr(manager, "_run", run_mock)
+    monkeypatch.setattr(manager, "_rename_package_sync", MagicMock())
+    monkeypatch.setattr(manager, "_move_to_downloadlist_sync", MagicMock())
+
+    await manager.finalize_selection(1, None, None, "file.zip")
+
+    manager._rename_package_sync.assert_called_once_with(1, "file.zip")
+    manager._move_to_downloadlist_sync.assert_called_once_with(1)
+
+  def test_sync_set_variant_calls_device_action(self):
+    manager = JDownloaderManager()
+    manager._device = MagicMock()
+
+    manager._set_variant_sync(10, "1080p")
+
+    manager._device.action.assert_called_once_with("/linkgrabberv2/setVariant",
+                                                   ["1080p", [10]])
+
+  def test_sync_rename_package_calls_device(self):
+    manager = JDownloaderManager()
+    manager._device = MagicMock()
+
+    manager._rename_package_sync(1, "new name")
+
+    manager._device.linkgrabber.rename_package.assert_called_once_with(
+      1, "new name")
 
 
 class TestListAccounts:

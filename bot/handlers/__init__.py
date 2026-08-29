@@ -11,6 +11,7 @@ from .message_handlers import (
   cmd_start,
   cmd_status,
   handle_message,
+  on_select_option,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
   "cmd_status",
   "cmd_remove",
   "handle_message",
+  "on_select_option",
 ]
