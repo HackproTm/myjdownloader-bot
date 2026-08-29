@@ -2,7 +2,8 @@
 
 from unittest.mock import MagicMock
 
-from utils.validators import extract_urls, is_authorized, is_valid_url
+from shared.utils.validators import extract_urls, is_valid_url
+from utils.validators import is_authorized
 
 
 class TestExtractUrls:

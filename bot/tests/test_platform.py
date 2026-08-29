@@ -1,6 +1,6 @@
 """Tests for utils.platform."""
 
-from utils.platform import detect_platform
+from shared.utils.platform import detect_platform
 
 
 class TestDetectPlatform:

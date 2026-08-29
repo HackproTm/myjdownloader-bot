@@ -1,5 +1,5 @@
-"""Service layer for business logic."""
+"""Service layer re-exported from the shared package."""
 
-from .jdownloader import JDownloaderManager, manager
+from shared.services.jdownloader import JDownloaderManager, manager
 
 __all__ = ["JDownloaderManager", "manager"]

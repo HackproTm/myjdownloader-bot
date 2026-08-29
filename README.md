@@ -8,20 +8,18 @@ Send a URL to the bot, it queues the download in JDownloader, tracks progress wi
 
 - 📥 Add downloads to JDownloader just by sending a URL to the bot
 - 🏷️ Optional custom file name (`<url> <filename>`)
-- 🎛️ When a link offers multiple files/resolutions (e.g. a YouTube video with several
-  qualities, audio-only, subtitles, thumbnail), the bot asks you which one to download
-- 🏷️ Package names in JDownloader are tagged with the detected platform (YouTube, Instagram, X, Facebook, etc.)
 - 📊 Live progress updates (percentage, size, status) in Telegram
 - 📤 Automatic upload of the finished file back to the chat
-- 📋 Queue management commands (`/queue`, `/list`, `/status`, `/remove`) with duplicate-download detection
 - 🔒 Optional chat allow-list (`ALLOWED_CHAT_IDS`) to restrict who can use the bot
-- 🐳 Fully containerized with Docker Compose (bot + JDownloader)
+- 🐳 Fully containerized with Docker Compose (bot + JDownloader + Mini App API)
+- 📱 A Telegram Mini App API (`api/`) exposing the same functionality (queue, accounts, duplicates) over HTTP for a future graphical web UI inside Telegram
 
 ## Tech Stack
 
-- [Python 3.15](https://www.python.org/)
+- [Python 3.12](https://www.python.org/)
 - [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot) 20.7
-- [myjdapi](https://github.com/mmarquezs/My.Jdownloader-API-Python-Library) — MyJDownloader API client
+- [FastAPI](https://fastapi.tiangolo.com/) — Mini App API
+- [myjdapi](https://github.com/mmarquezs/My.Jdownloader-API-Library) — MyJDownloader API client
 - [python-dotenv](https://github.com/theskumar/python-dotenv) — environment variable loading
 - Docker & Docker Compose
 
@@ -29,15 +27,25 @@ Send a URL to the bot, it queues the download in JDownloader, tracks progress wi
 
 ```
 .
-├── docker-compose.yml       # Orchestrates the bot and JDownloader containers
+├── docker-compose.yml       # Orchestrates jdownloader, bot, and api containers
 ├── downloads/               # Shared volume where finished downloads land
-└── bot/
-    ├── main.py              # Application entry point
-    ├── config.py            # Environment-based configuration
-    ├── data/                # Data models (DownloadJob, etc.)
-    ├── services/             # MyJDownloader API integration
-    ├── handlers/             # Telegram command/message handlers
-    ├── utils/                # Formatters, validators, file helpers, logging
+├── shared/                  # Code shared by bot/ and api/ (JDownloader service, history, utils)
+│   ├── config.py
+│   ├── data/                 # DownloadJob model + duplicate-download history
+│   ├── services/             # MyJDownloader API integration
+│   └── utils/                # Formatters, validators, file helpers, platform detection
+├── bot/                     # Telegram bot (python-telegram-bot)
+│   ├── main.py              # Application entry point
+│   ├── config.py            # Bot-specific env vars (re-exports shared/config.py)
+│   ├── handlers/             # Telegram command/message handlers
+│   ├── tests/                # Unit test suite (pytest)
+│   ├── Dockerfile
+│   └── requirements.txt
+└── api/                     # Mini App API (FastAPI)
+    ├── main.py              # FastAPI app entry point
+    ├── config.py            # API-specific env vars
+    ├── auth.py               # Telegram Mini App initData validation
+    ├── routers/              # /api/queue, /api/accounts endpoints
     ├── tests/                # Unit test suite (pytest)
     ├── Dockerfile
     └── requirements.txt
@@ -103,41 +111,6 @@ https://example.com/file.zip
 https://example.com/file.zip my_custom_name.zip
 ```
 
-### Queue management
-
-```
-/queue <url> [name] [force]   Add a download to the queue (like sending a plain URL)
-/list                         Show the queue with download percentage
-/status                       Show the queue with status text (Name, Status, URL)
-/remove <name>                Remove a download from the queue/JDownloader and delete its local file
-```
-
-Send `/queue` with no arguments and the bot will ask you for the URL (validating it looks like a
-real link) and then for a file name (send `-` to use the default one).
-
-If a URL or file name was already queued before, `/queue` asks you (with buttons) whether to
-download it again or, if the file is still on disk, resend it straight away without re-downloading.
-This history — including the resulting file path once a download finishes — is stored in
-`downloads/.bot_data/history.json` and survives container restarts. You can still force a
-re-download without the prompt by adding `force` at the end: `/queue <url> <name> force`.
-
-When a link offers more than one file or quality (e.g. a YouTube video with several resolutions,
-audio-only, thumbnail, subtitles), the bot shows a button per option with an icon and description
-(🎬 video, 🎵 audio, 🖼 thumbnail, 📝 subtitles, plus resolution/bitrate when available) so you can
-pick exactly what you want.
-
-### Premium accounts
-
-Some hosts (Instagram, YouTube, X, Facebook, etc.) require an authenticated account to work in JDownloader. Manage them directly from Telegram:
-
-```
-/accounts                                    List configured accounts
-/addaccount <hoster> <username> <password>   Add or update an account (e.g. /addaccount instagram.com myuser mypass)
-/removeaccount <uuid>                        Remove an account (uuid shown by /accounts)
-```
-
-The `/addaccount` message is deleted immediately after processing so the password doesn't linger in the chat history.
-
 | Command   | Description                       |
 | --------- | ---------------------------------- |
 | `/start`  | Show the welcome message and usage |
@@ -148,38 +121,38 @@ The `/addaccount` message is deleted immediately after processing so the passwor
 ### Setup
 
 ```bash
+# Bot
 cd bot
 python -m venv .venv
 source .venv/bin/activate
-uv pip install -r requirements.txt
-uv pip install -r requirements-dev.txt
+uv pip install -r requirements.txt -r requirements-dev.txt
+
+# Mini App API (separate venv, Python 3.12 recommended)
+cd ../api
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -r requirements.txt -r requirements-dev.txt
 ```
 
 ### Running tests
 
 ```bash
-cd bot
-source .venv/bin/activate
-python -m pytest -q
+cd bot && source .venv/bin/activate && python -m pytest -q
+cd api && source .venv/bin/activate && python -m pytest -q
 ```
 
 ### Code style
 
-This project uses 2-space indentation for Python code, enforced via [yapf](https://github.com/google/yapf) (`bot/.style.yapf`) and [.editorconfig](.editorconfig).
+This project uses 2-space indentation for Python code, enforced via [yapf](https://github.com/google/yapf) (`.style.yapf` at the repo root) and [.editorconfig](.editorconfig).
 
 ```bash
-cd bot
-source .venv/bin/activate
-yapf -i -r --exclude '.venv/*' --exclude '__pycache__/*' .
+yapf -i -r --exclude '*/.venv/*' --exclude '*/__pycache__/*' bot/ shared/ api/
 ```
 
 ### Linting
 
-Static checks (unused imports, undefined names, common bugs) run via [ruff](https://github.com/astral-sh/ruff) (`bot/pyproject.toml`).
+Static checks (unused imports, undefined names, common bugs) run via [ruff](https://github.com/astral-sh/ruff) (`pyproject.toml` at the repo root, covers `bot/`, `shared/`, and `api/`).
 
 ```bash
-cd bot
-source .venv/bin/activate
 ruff check .
 ```
 

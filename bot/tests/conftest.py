@@ -8,6 +8,8 @@ import pytest
 
 # Make the "bot" package directory importable (config, data, services, etc.)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Make the repo-root "shared" package importable too.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 # Required secrets must exist BEFORE config.py is imported by any module under test.
 import os  # noqa: E402

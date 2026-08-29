@@ -2,7 +2,7 @@
 
 import time
 
-from utils.file_utils import newest_file, search_in_tree
+from shared.utils.file_utils import newest_file, search_in_tree
 
 
 class TestSearchInTree:

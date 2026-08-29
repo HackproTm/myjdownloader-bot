@@ -1,6 +1,6 @@
 """Tests for data.history."""
 
-import data.history as history
+import shared.data.history as history
 
 
 def _use_temp_history(tmp_path, monkeypatch):

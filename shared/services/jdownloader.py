@@ -7,16 +7,16 @@ from typing import Awaitable, Callable, Optional
 
 import myjdapi
 
-from config import (
+from shared.config import (
   DOWNLOADS_PATH,
   MYJD_DEVICE_NAME,
   MYJD_EMAIL,
   MYJD_PASSWORD,
   POLL_INTERVAL,
 )
-from data import DownloadJob
-from utils.file_utils import newest_file, search_in_tree
-from utils.formatters import describe_option_label
+from shared.data import DownloadJob
+from shared.utils.file_utils import newest_file, search_in_tree
+from shared.utils.formatters import describe_option_label
 
 logger = logging.getLogger(__name__)
 

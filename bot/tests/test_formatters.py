@@ -1,6 +1,6 @@
 """Tests for utils.formatters."""
 
-from utils.formatters import (
+from shared.utils.formatters import (
   describe_option_label,
   format_queue_list,
   format_size,

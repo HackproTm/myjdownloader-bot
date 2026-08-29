@@ -1,6 +1,11 @@
 """Bot entry point."""
 
 import logging
+import sys
+from pathlib import Path
+
+# Make the repo-root "shared" package importable regardless of how this is launched.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
 from telegram import BotCommand

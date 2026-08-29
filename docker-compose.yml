@@ -12,7 +12,9 @@ services:
       - jd_config:/opt/JDownloader/cfg
 
   bot:
-    build: ./bot
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
     container_name: jd-telegram-bot
     restart: unless-stopped
     environment:
@@ -26,6 +28,29 @@ services:
       MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
     volumes:
       - ./downloads:/downloads
+    depends_on:
+      - jdownloader
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: jd-mini-app-api
+    restart: unless-stopped
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      MYJD_EMAIL: ${MYJD_EMAIL}
+      MYJD_PASSWORD: ${MYJD_PASSWORD}
+      MYJD_DEVICE_NAME: ${MYJD_DEVICE_NAME:-MyJDownloader}
+      ALLOWED_CHAT_IDS: ${ALLOWED_CHAT_IDS:-}
+      DOWNLOADS_PATH: /downloads
+      POLL_INTERVAL: ${POLL_INTERVAL:-10}
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    volumes:
+      - ./downloads:/downloads
+    ports:
+      - "127.0.0.1:8000:8000"
     depends_on:
       - jdownloader
 

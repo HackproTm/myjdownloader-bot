@@ -1,6 +1,6 @@
 """Tests for data.models."""
 
-from data.models import DownloadJob
+from shared.data.models import DownloadJob
 
 
 class TestDownloadJob:

@@ -5,7 +5,7 @@ import os
 import time
 from typing import Optional
 
-from config import DOWNLOADS_PATH
+from shared.config import DOWNLOADS_PATH
 
 # Stored under a hidden subfolder so it's never picked up as a downloaded file.
 _HISTORY_FILE = os.path.join(DOWNLOADS_PATH, ".bot_data", "history.json")

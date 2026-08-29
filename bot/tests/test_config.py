@@ -43,9 +43,13 @@ class TestDeviceNameFallback:
     monkeypatch.delenv("MYJD_DEVICE_NAME", raising=False)
     monkeypatch.setattr("socket.gethostname", lambda: "resolved-hostname")
 
+    import shared.config as shared_config
+
+    importlib.reload(shared_config)
     importlib.reload(config)
     try:
       assert config.MYJD_DEVICE_NAME == "resolved-hostname"
     finally:
       monkeypatch.undo()
+      importlib.reload(shared_config)
       importlib.reload(config)

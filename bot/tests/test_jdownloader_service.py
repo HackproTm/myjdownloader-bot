@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-from services.jdownloader import (
+from shared.services.jdownloader import (
   JDownloaderManager,
   _find_by_name,
   _find_by_uuid_or_name,
@@ -275,7 +275,8 @@ class TestConnectSync:
     manager = JDownloaderManager()
     mock_jd_instance = MagicMock()
     mock_jd_class = MagicMock(return_value=mock_jd_instance)
-    monkeypatch.setattr("services.jdownloader.myjdapi.Myjdapi", mock_jd_class)
+    monkeypatch.setattr("shared.services.jdownloader.myjdapi.Myjdapi",
+                        mock_jd_class)
 
     manager._connect_sync()
 
