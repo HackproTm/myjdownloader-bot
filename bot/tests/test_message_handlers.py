@@ -251,8 +251,8 @@ class TestCmdQueue:
     find_duplicate_mock.assert_not_called()
     run_download_mock.assert_awaited_once()
 
-  async def test_reports_usage_when_no_args(self, mock_update, mock_context,
-                                            monkeypatch):
+  async def test_prompts_for_url_when_no_args(self, mock_update, mock_context,
+                                              monkeypatch):
     monkeypatch.setattr("handlers.message_handlers.is_authorized",
                         lambda update: True)
     mock_context.args = []
@@ -260,7 +260,19 @@ class TestCmdQueue:
     await cmd_queue(mock_update, mock_context)
 
     args, _ = mock_update.message.reply_text.call_args
-    assert "Usage" in args[0]
+    assert "URL" in args[0]
+    assert mock_context.chat_data["awaiting_queue_url"] is True
+
+  async def test_rejects_invalid_url(self, mock_update, mock_context,
+                                     monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    mock_context.args = ["not-a-url"]
+
+    await cmd_queue(mock_update, mock_context)
+
+    args, _ = mock_update.message.reply_text.call_args
+    assert "valid URL" in args[0]
 
   async def test_does_nothing_when_unauthorized(self, mock_update,
                                                 mock_context, monkeypatch):
@@ -406,6 +418,84 @@ class TestHandleMessage:
     call_args = run_download_mock.call_args.args
     assert call_args[2] == "http://x.com/f.zip"
     assert call_args[3] == "custom_name.zip"
+
+
+class TestQueueConversation:
+
+  async def test_valid_url_reply_asks_for_name(self, mock_update, mock_context,
+                                               monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    mock_context.chat_data = {"awaiting_queue_url": True}
+    mock_update.message.text = "http://x.com/f.zip"
+
+    await handle_message(mock_update, mock_context)
+
+    assert mock_context.chat_data["awaiting_queue_url"] is False
+    assert mock_context.chat_data["awaiting_queue_name"] is True
+    assert mock_context.chat_data["queue_pending_url"] == "http://x.com/f.zip"
+    args, _ = mock_update.message.reply_text.call_args
+    assert "file name" in args[0]
+
+  async def test_invalid_url_reply_keeps_waiting(self, mock_update,
+                                                 mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    mock_context.chat_data = {"awaiting_queue_url": True}
+    mock_update.message.text = "not a url"
+
+    await handle_message(mock_update, mock_context)
+
+    assert mock_context.chat_data["awaiting_queue_url"] is True
+    args, _ = mock_update.message.reply_text.call_args
+    assert "valid URL" in args[0]
+
+  async def test_name_reply_starts_download(self, mock_update, mock_context,
+                                            monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.history.find_duplicate",
+                        lambda url, name: None)
+    monkeypatch.setattr("handlers.message_handlers.history.record",
+                        MagicMock())
+    run_download_mock = AsyncMock()
+    monkeypatch.setattr("handlers.message_handlers._run_download",
+                        run_download_mock)
+    mock_context.chat_data = {
+      "awaiting_queue_name": True,
+      "queue_pending_url": "http://x.com/f.zip",
+    }
+    mock_update.message.text = "my_file.zip"
+
+    await handle_message(mock_update, mock_context)
+
+    run_download_mock.assert_awaited_once()
+    call_args = run_download_mock.call_args.args
+    assert call_args[2] == "http://x.com/f.zip"
+    assert call_args[3] == "my_file.zip"
+    assert "queue_pending_url" not in mock_context.chat_data
+
+  async def test_name_reply_with_dash_uses_default_name(
+      self, mock_update, mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.history.find_duplicate",
+                        lambda url, name: None)
+    monkeypatch.setattr("handlers.message_handlers.history.record",
+                        MagicMock())
+    run_download_mock = AsyncMock()
+    monkeypatch.setattr("handlers.message_handlers._run_download",
+                        run_download_mock)
+    mock_context.chat_data = {
+      "awaiting_queue_name": True,
+      "queue_pending_url": "http://x.com/f.zip",
+    }
+    mock_update.message.text = "-"
+
+    await handle_message(mock_update, mock_context)
+
+    call_args = run_download_mock.call_args.args
+    assert call_args[3] is None
 
 
 class TestRunDownloadFlow:

@@ -1,6 +1,7 @@
 """Tests for utils.formatters."""
 
 from utils.formatters import (
+  describe_option_label,
   format_queue_list,
   format_size,
   format_status_list,
@@ -93,3 +94,25 @@ class TestFormatStatusList:
 
   def test_respects_custom_width(self):
     assert len(progress_bar(30, width=20)) == 20
+
+
+class TestDescribeOptionLabel:
+
+  def test_video_extension_gets_video_icon(self):
+    assert describe_option_label("clip.mp4") == "🎬 clip.mp4"
+
+  def test_audio_extension_gets_audio_icon(self):
+    assert describe_option_label("song.m4a") == "🎵 song.m4a"
+
+  def test_image_extension_gets_image_icon(self):
+    assert describe_option_label("thumb.jpg") == "🖼 thumb.jpg"
+
+  def test_subtitle_extension_gets_subtitle_icon(self):
+    assert describe_option_label("movie.en.srt") == "📝 movie.en.srt"
+
+  def test_unknown_extension_gets_generic_icon(self):
+    assert describe_option_label("archive.zip") == "📄 archive.zip"
+
+  def test_appends_variant_name_when_given(self):
+    assert describe_option_label(
+      "clip.mp4", "1080p60 (mp4)") == "🎬 clip.mp4 — 1080p60 (mp4)"

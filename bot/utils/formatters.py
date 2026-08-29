@@ -1,5 +1,8 @@
 """Formatting utilities for messages and data."""
 
+import os
+from typing import Optional
+
 
 def format_size(size_bytes: int) -> str:
   """
@@ -36,6 +39,52 @@ def progress_bar(pct: float, width: int = 12) -> str:
 def _truncate(text: str, width: int) -> str:
   """Truncate text to a max width, adding an ellipsis if needed."""
   return text if len(text) <= width else text[:width - 1] + "…"
+
+
+_EXTENSION_ICONS = {
+  ".mp4": "🎬",
+  ".mkv": "🎬",
+  ".webm": "🎬",
+  ".avi": "🎬",
+  ".mov": "🎬",
+  ".m4a": "🎵",
+  ".mp3": "🎵",
+  ".opus": "🎵",
+  ".ogg": "🎵",
+  ".aac": "🎵",
+  ".wav": "🎵",
+  ".jpg": "🖼",
+  ".jpeg": "🖼",
+  ".png": "🖼",
+  ".webp": "🖼",
+  ".srt": "📝",
+  ".vtt": "📝",
+  ".ass": "📝",
+}
+
+
+def describe_option_label(link_name: str,
+                          variant_name: Optional[str] = None) -> str:
+  """
+  Build a user-friendly label for a download option.
+
+  Prefixes the file name with an icon based on its extension (video, audio,
+  thumbnail, subtitles) and appends the variant name (resolution, bitrate,
+  format, etc.) when there is one, so options are easy to tell apart.
+
+  Args:
+    link_name: File name of the link (e.g. "video.mp4")
+    variant_name: Variant description (e.g. "1080p60 (mp4)"), if any
+
+  Returns:
+    A short descriptive label
+  """
+  ext = os.path.splitext(link_name)[1].lower()
+  icon = _EXTENSION_ICONS.get(ext, "📄")
+  label = f"{icon} {link_name}"
+  if variant_name:
+    label += f" — {variant_name}"
+  return label
 
 
 def format_queue_list(entries: list) -> str:

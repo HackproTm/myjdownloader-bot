@@ -34,4 +34,5 @@ def mock_context():
   """Create a mock Telegram context with an async-capable bot."""
   context = MagicMock()
   context.bot.send_document = AsyncMock()
+  context.chat_data = {}
   return context

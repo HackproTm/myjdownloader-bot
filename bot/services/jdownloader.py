@@ -16,6 +16,7 @@ from config import (
 )
 from data import DownloadJob
 from utils.file_utils import newest_file, search_in_tree
+from utils.formatters import describe_option_label
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +180,7 @@ class JDownloaderManager:
       if link.get("variants"):
         variants = await self._run(self._get_variants_sync, link["uuid"])
 
+      link_name = link.get("name", "file")
       if len(variants) > 1:
         for variant in variants:
           variant_name = variant.get("name", variant.get("id", "variant"))
@@ -188,13 +190,13 @@ class JDownloaderManager:
             "variant_id":
             variant.get("id"),
             "label":
-            f"{link.get('name', 'file')} — {variant_name}",
+            describe_option_label(link_name, variant_name),
           })
       else:
         options.append({
           "link_uuid": link["uuid"],
           "variant_id": None,
-          "label": link.get("name", "file"),
+          "label": describe_option_label(link_name),
         })
     return options
 

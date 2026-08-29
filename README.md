@@ -112,9 +112,17 @@ https://example.com/file.zip my_custom_name.zip
 /remove <name>                Remove a download from the queue/JDownloader and delete its local file
 ```
 
+Send `/queue` with no arguments and the bot will ask you for the URL (validating it looks like a
+real link) and then for a file name (send `-` to use the default one).
+
 If a URL or file name was already queued before, `/queue` warns you and asks you to resend the
 command with `force` at the end to confirm you want to download it again. This history is stored
 in `downloads/.bot_data/history.json` and survives container restarts.
+
+When a link offers more than one file or quality (e.g. a YouTube video with several resolutions,
+audio-only, thumbnail, subtitles), the bot shows a button per option with an icon and description
+(🎬 video, 🎵 audio, 🖼 thumbnail, 📝 subtitles, plus resolution/bitrate when available) so you can
+pick exactly what you want.
 
 ### Premium accounts
 

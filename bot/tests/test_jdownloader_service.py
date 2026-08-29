@@ -75,7 +75,7 @@ class TestCollectLink:
     assert result["options"] == [{
       "link_uuid": 10,
       "variant_id": None,
-      "label": "video.mp4",
+      "label": "🎬 video.mp4",
     }]
 
   async def test_raises_when_no_new_package_appears(self, monkeypatch):
@@ -102,20 +102,20 @@ class TestBuildOptions:
 
   async def test_single_link_without_variants_is_one_option(self, monkeypatch):
     manager = JDownloaderManager()
-    links = [{"uuid": 10, "name": "file.zip", "variants": False}]
+    links = [{"uuid": 10, "name": "video.mp4", "variants": False}]
 
     options = await manager._build_options(links)
 
     assert options == [{
       "link_uuid": 10,
       "variant_id": None,
-      "label": "file.zip",
+      "label": "🎬 video.mp4",
     }]
 
   async def test_link_with_multiple_variants_expands_to_many_options(
       self, monkeypatch):
     manager = JDownloaderManager()
-    links = [{"uuid": 10, "name": "video", "variants": True}]
+    links = [{"uuid": 10, "name": "video.mp4", "variants": True}]
     monkeypatch.setattr(
       manager,
       "_run",
@@ -137,7 +137,7 @@ class TestBuildOptions:
     assert options[0] == {
       "link_uuid": 10,
       "variant_id": "1080p",
-      "label": "video — 1080p"
+      "label": "🎬 video.mp4 — 1080p"
     }
 
 

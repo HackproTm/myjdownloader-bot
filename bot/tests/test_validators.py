@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from utils.validators import extract_urls, is_authorized
+from utils.validators import extract_urls, is_authorized, is_valid_url
 
 
 class TestExtractUrls:
@@ -55,3 +55,21 @@ class TestIsAuthorized:
     update = MagicMock()
     update.effective_chat.id = 999
     assert is_authorized(update) is False
+
+
+class TestIsValidUrl:
+
+  def test_accepts_http_url(self):
+    assert is_valid_url("http://example.com/file.zip") is True
+
+  def test_accepts_https_url(self):
+    assert is_valid_url("https://example.com/file.zip") is True
+
+  def test_accepts_url_with_surrounding_whitespace(self):
+    assert is_valid_url("  https://example.com/file.zip  ") is True
+
+  def test_rejects_plain_text(self):
+    assert is_valid_url("not a url") is False
+
+  def test_rejects_text_with_extra_words_after_url(self):
+    assert is_valid_url("https://example.com/file.zip please") is False

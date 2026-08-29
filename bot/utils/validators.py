@@ -38,3 +38,16 @@ def extract_urls(text: str) -> List[str]:
     List of URLs found
   """
   return _URL_PATTERN.findall(text)
+
+
+def is_valid_url(text: str) -> bool:
+  """
+  Check whether text is (only) a single valid URL.
+
+  Args:
+    text: Text to validate
+
+  Returns:
+    True if text is a well-formed http(s) URL
+  """
+  return bool(_URL_PATTERN.fullmatch(text.strip()))

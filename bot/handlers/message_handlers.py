@@ -19,6 +19,7 @@ from utils import (
   format_size,
   format_status_list,
   is_authorized,
+  is_valid_url,
   progress_bar,
 )
 
@@ -43,7 +44,7 @@ async def cmd_start(update: Update,
     "• `https://example\\.com/file\\.zip my_file\\.zip`\n\n"
     "When the download finishes, I will send the file back here\\.\n\n"
     "*Queue management:*\n"
-    "• `/queue <url> [name] [force]` — add a download to the queue\n"
+    "• `/queue <url> [name] [force]` — add a download \\(or just `/queue` to be asked for it\\)\n"
     "• `/list` — queue with download percentage\n"
     "• `/status` — queue with status text\n"
     "• `/remove <name>` — remove a download and delete its local file\n\n"
@@ -196,15 +197,35 @@ async def cmd_queue(update: Update,
     args = args[:-1]
 
   if not args:
+    context.chat_data[  # type: ignore[union-attr]
+      "awaiting_queue_url"] = True
+    logger.info("Chat %s: /queue with no args, asking for the URL", chat_id)
     await update.message.reply_text(  # type: ignore[union-attr]
-      "Usage: `/queue <url> [name] [force]`",
-      parse_mode=ParseMode.MARKDOWN)
+      "🔗 Send me the URL you want to queue.")
     return
 
   url = args[0]
+  if not is_valid_url(url):
+    await update.message.reply_text(  # type: ignore[union-attr]
+      f"⚠️ `{url}` doesn't look like a valid URL.",
+      parse_mode=ParseMode.MARKDOWN)
+    return
+
   package_name = args[1] if len(args) > 1 else None
+  await _start_queue(update, context, url, package_name, force)
+
+
+async def _start_queue(
+  update: Update,
+  context: ContextTypes.DEFAULT_TYPE,
+  url: str,
+  package_name: Optional[str],
+  force: bool = False,
+) -> None:
+  """Check for duplicates (unless forced), record history, and start the download."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
   dedup_name = package_name or _default_package_name(url)
-  logger.info("Chat %s: /queue url=%s name=%s force=%s", chat_id, url,
+  logger.info("Chat %s: queueing url=%s name=%s force=%s", chat_id, url,
               dedup_name, force)
 
   if not force:
@@ -325,6 +346,17 @@ async def handle_message(update: Update,
     return
 
   text = (update.message.text or "").strip()  # type: ignore[union-attr]
+
+  # Reply to an interactive /queue conversation, if one is in progress.
+  if context.chat_data.get(  # type: ignore[union-attr]
+      "awaiting_queue_url"):
+    await _handle_queue_url_reply(update, context, text)
+    return
+  if context.chat_data.get(  # type: ignore[union-attr]
+      "awaiting_queue_name"):
+    await _handle_queue_name_reply(update, context, text)
+    return
+
   urls = extract_urls(text)
 
   if not urls:
@@ -340,6 +372,44 @@ async def handle_message(update: Update,
               requested_name)
 
   await _run_download(update, context, url, requested_name)
+
+
+async def _handle_queue_url_reply(update: Update,
+                                  context: ContextTypes.DEFAULT_TYPE,
+                                  text: str) -> None:
+  """Handle the URL reply of an interactive /queue conversation."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
+  if not is_valid_url(text):
+    await update.message.reply_text(  # type: ignore[union-attr]
+      "⚠️ That doesn't look like a valid URL. "
+      "Please send a link starting with http:// or https://.")
+    return  # Keep waiting for a valid URL.
+
+  context.chat_data["awaiting_queue_url"] = False  # type: ignore[union-attr]
+  context.chat_data["queue_pending_url"] = text  # type: ignore[union-attr]
+  context.chat_data["awaiting_queue_name"] = True  # type: ignore[union-attr]
+  logger.info("Chat %s: got URL for interactive /queue: %s", chat_id, text)
+
+  await update.message.reply_text(  # type: ignore[union-attr]
+    "🏷️ Now send me a file name, or `-` to use the default name.",
+    parse_mode=ParseMode.MARKDOWN,
+  )
+
+
+async def _handle_queue_name_reply(update: Update,
+                                   context: ContextTypes.DEFAULT_TYPE,
+                                   text: str) -> None:
+  """Handle the file name reply of an interactive /queue conversation."""
+  context.chat_data["awaiting_queue_name"] = False  # type: ignore[union-attr]
+  url = context.chat_data.pop(  # type: ignore[union-attr]
+    "queue_pending_url", None)
+  if url is None:
+    await update.message.reply_text(  # type: ignore[union-attr]
+      "⚠️ Something went wrong, please start again with /queue.")
+    return
+
+  package_name = None if text in ("-", "") else text
+  await _start_queue(update, context, url, package_name)
 
 
 def _default_package_name(url: str) -> str:

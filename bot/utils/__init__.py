@@ -3,7 +3,7 @@
 from .file_utils import newest_file, search_in_tree
 from .formatters import format_queue_list, format_size, format_status_list, progress_bar
 from .platform import detect_platform
-from .validators import is_authorized, extract_urls
+from .validators import is_authorized, extract_urls, is_valid_url
 
 __all__ = [
   "format_size",
@@ -13,6 +13,7 @@ __all__ = [
   "detect_platform",
   "is_authorized",
   "extract_urls",
+  "is_valid_url",
   "newest_file",
   "search_in_tree",
 ]
