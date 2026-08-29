@@ -12,6 +12,19 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+.ruff_cache/
+*.log
 
 # Local Docker volumes
 jdownloader/cfg/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

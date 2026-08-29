@@ -18,7 +18,8 @@ load_dotenv()
 from config import TELEGRAM_TOKEN  # noqa: E402
 from handlers import (  # noqa: E402
   cmd_accounts, cmd_add_account, cmd_help, cmd_list, cmd_queue, cmd_remove,
-  cmd_remove_account, cmd_start, cmd_status, handle_message, on_select_option,
+  cmd_remove_account, cmd_start, cmd_status, handle_message,
+  on_duplicate_choice, on_select_option,
 )
 from utils.logger import configure_logging  # noqa: E402
 
@@ -62,6 +63,7 @@ def main() -> None:
   app.add_handler(CommandHandler("addaccount", cmd_add_account))
   app.add_handler(CommandHandler("removeaccount", cmd_remove_account))
   app.add_handler(CallbackQueryHandler(on_select_option, pattern=r"^dlopt:"))
+  app.add_handler(CallbackQueryHandler(on_duplicate_choice, pattern=r"^dupe:"))
   app.add_handler(
     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

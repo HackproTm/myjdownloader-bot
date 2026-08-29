@@ -58,3 +58,23 @@ def record(url: str, package_name: str) -> None:
     "added_at": time.strftime("%Y-%m-%d %H:%M:%S"),
   })
   _save(entries)
+
+
+def update_file_path(url: str, package_name: str, file_path: str) -> None:
+  """
+  Attach the resulting local file path to the most recent matching entry.
+
+  This lets a later duplicate /queue request offer to resend the file
+  instead of downloading it again.
+
+  Args:
+    url: URL of the completed download
+    package_name: Package/file name of the completed download
+    file_path: Absolute path of the downloaded file on disk
+  """
+  entries = _load()
+  for entry in reversed(entries):
+    if entry["url"] == url or entry["package_name"] == package_name:
+      entry["file_path"] = file_path
+      break
+  _save(entries)

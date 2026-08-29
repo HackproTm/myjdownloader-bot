@@ -2,6 +2,7 @@
 
 import logging
 import os
+import secrets
 import time
 from typing import Optional
 
@@ -231,20 +232,56 @@ async def _start_queue(
   if not force:
     existing = history.find_duplicate(url, dedup_name)
     if existing:
-      logger.info("Chat %s: duplicate detected (matched_by=%s)", chat_id,
-                  existing["matched_by"])
-      matched = "URL" if existing["matched_by"] == "url" else "file name"
-      await update.message.reply_text(  # type: ignore[union-attr]
-        f"⚠️ This {matched} was already queued on {existing['added_at']} "
-        f"as `{existing['package_name']}`.\n"
-        f"Resend with `force` at the end to download it again:\n"
-        f"`/queue {url} {dedup_name} force`",
-        parse_mode=ParseMode.MARKDOWN,
-      )
+      await _prompt_duplicate_choice(update, context, url, package_name,
+                                     dedup_name, existing)
       return
 
   history.record(url, dedup_name)
   await _run_download(update, context, url, package_name)
+
+
+async def _prompt_duplicate_choice(
+  update: Update,
+  context: ContextTypes.DEFAULT_TYPE,
+  url: str,
+  package_name: Optional[str],
+  dedup_name: str,
+  existing: dict,
+) -> None:
+  """Ask the user whether to re-download a duplicate or resend the existing file."""
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
+  matched = "URL" if existing["matched_by"] == "url" else "file name"
+  file_path = existing.get("file_path")
+  file_available = bool(file_path and os.path.exists(file_path))
+
+  token = secrets.token_hex(4)
+  context.chat_data.setdefault(  # type: ignore[union-attr]
+    "pending_duplicates", {})[token] = {
+      "url": url,
+      "package_name": package_name,
+      "dedup_name": dedup_name,
+      "file_path": file_path if file_available else None,
+    }
+
+  buttons = [[
+    InlineKeyboardButton("🔁 Download again",
+                         callback_data=f"dupe:{token}:redownload")
+  ]]
+  if file_available:
+    buttons.append([
+      InlineKeyboardButton("📤 Send existing file",
+                           callback_data=f"dupe:{token}:send")
+    ])
+
+  logger.info("Chat %s: duplicate detected (matched_by=%s, file_available=%s)",
+              chat_id, existing["matched_by"], file_available)
+
+  await update.effective_message.reply_text(  # type: ignore[union-attr]
+    f"⚠️ This {matched} was already queued on {existing['added_at']} "
+    f"as `{existing['package_name']}`.\nWhat do you want to do?",
+    parse_mode=ParseMode.MARKDOWN,
+    reply_markup=InlineKeyboardMarkup(buttons),
+  )
 
 
 async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -467,6 +504,54 @@ async def on_select_option(update: Update,
   await _monitor_and_deliver(query.message, chat_id, context, job)
 
 
+async def on_duplicate_choice(update: Update,
+                              context: ContextTypes.DEFAULT_TYPE) -> None:
+  """Handle inline-keyboard taps for a duplicate URL/file name prompt."""
+  query = update.callback_query
+  chat_id = update.effective_chat.id  # type: ignore[union-attr]
+  if not is_authorized(update):
+    logger.warning("Chat %s: unauthorized duplicate-choice attempt", chat_id)
+    await query.answer("Not authorized.", show_alert=True)
+    return
+  await query.answer()
+
+  _, token, action = query.data.split(":", 2)
+  pending_all = context.chat_data.setdefault(  # type: ignore[union-attr]
+    "pending_duplicates", {})
+  pending = pending_all.pop(token, None)
+  if pending is None:
+    await query.edit_message_text("⚠️ This choice has expired.")
+    return
+
+  url = pending["url"]
+  package_name = pending["package_name"]
+
+  if action == "send":
+    file_path = pending.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+      await query.edit_message_text(
+        "⚠️ The previously downloaded file is no longer available.")
+      return
+    logger.info("Chat %s: sending existing file for %s", chat_id,
+                pending["dedup_name"])
+    await query.edit_message_text(
+      f"📤 *Sending existing file...*\n`{os.path.basename(file_path)}`",
+      parse_mode=ParseMode.MARKDOWN,
+    )
+    await _send_local_file(query.message, chat_id, context, file_path)
+    return
+
+  # action == "redownload"
+  logger.info("Chat %s: re-downloading duplicate url=%s name=%s", chat_id, url,
+              pending["dedup_name"])
+  await query.edit_message_text(
+    f"🔁 *Re-downloading...*\n`{pending['dedup_name']}`",
+    parse_mode=ParseMode.MARKDOWN,
+  )
+  history.record(url, pending["dedup_name"])
+  await _run_download(update, context, url, package_name)
+
+
 # ─── Download Flow ────────────────────────────────────────────────────────────
 
 
@@ -484,7 +569,7 @@ async def _run_download(
   logger.info("Chat %s: collecting url=%s requested_name=%s", chat_id, url,
               requested_name)
 
-  status_msg = await update.message.reply_text(  # type: ignore[union-attr]
+  status_msg = await update.effective_message.reply_text(  # type: ignore[union-attr]
     f"🔎 *Looking up...*\n`{url}`",
     parse_mode=ParseMode.MARKDOWN,
   )
@@ -574,6 +659,7 @@ async def _monitor_and_deliver(
     except Exception:
       pass  # Message might be unchanged (flood control, etc.).
 
+  file_path = None
   try:
     file_path = await manager.monitor_job(job, on_progress=on_progress)
   except Exception as exc:
@@ -584,24 +670,35 @@ async def _monitor_and_deliver(
     )
     return
 
+  history.update_file_path(job.url, job.package_name, file_path)
+  logger.info("Chat %s: download finished file=%s", chat_id,
+              os.path.basename(file_path))
+
+  await status_msg.edit_text(
+    f"✅ *Download completed:* `{os.path.basename(file_path)}`\nSending...",
+    parse_mode=ParseMode.MARKDOWN,
+  )
+  await _send_local_file(status_msg, chat_id, context, file_path)
+
+
+async def _send_local_file(
+  status_msg,
+  chat_id: int,
+  context: ContextTypes.DEFAULT_TYPE,
+  file_path: str,
+) -> None:
+  """Send a local file to the chat, respecting Telegram's size limit."""
   file_size = os.path.getsize(file_path)
   filename = os.path.basename(file_path)
-  logger.info("Chat %s: download finished file=%s size=%d bytes", chat_id,
-              filename, file_size)
 
   if file_size > MAX_FILE_SIZE_BYTES:
     await status_msg.edit_text(
-      f"✅ *Download completed:* `{filename}`\n"
+      f"✅ `{filename}`\n"
       f"⚠️ File size is *{format_size(file_size)}* and exceeds "
       f"Telegram's 50 MB bot limit. You can access it on the server.",
       parse_mode=ParseMode.MARKDOWN,
     )
     return
-
-  await status_msg.edit_text(
-    f"✅ *Download completed:* `{filename}`\nSending...",
-    parse_mode=ParseMode.MARKDOWN,
-  )
 
   try:
     with open(file_path, "rb") as fh:

@@ -43,3 +43,34 @@ class TestRecord:
     assert len(entries) == 1
     assert entries[0]["url"] == "http://x.com/f.zip"
     assert entries[0]["package_name"] == "f.zip"
+
+
+class TestUpdateFilePath:
+
+  def test_attaches_file_path_to_matching_entry(self, tmp_path, monkeypatch):
+    _use_temp_history(tmp_path, monkeypatch)
+    history.record("http://x.com/f.zip", "f.zip")
+
+    history.update_file_path("http://x.com/f.zip", "f.zip", "/downloads/f.zip")
+
+    match = history.find_duplicate("http://x.com/f.zip", "f.zip")
+    assert match["file_path"] == "/downloads/f.zip"
+
+  def test_matches_by_package_name_too(self, tmp_path, monkeypatch):
+    _use_temp_history(tmp_path, monkeypatch)
+    history.record("http://x.com/f.zip", "f.zip")
+
+    history.update_file_path("http://other.com/g.zip", "f.zip",
+                             "/downloads/f.zip")
+
+    match = history.find_duplicate("http://x.com/f.zip", "f.zip")
+    assert match["file_path"] == "/downloads/f.zip"
+
+  def test_does_nothing_when_no_match(self, tmp_path, monkeypatch):
+    _use_temp_history(tmp_path, monkeypatch)
+    history.record("http://x.com/f.zip", "f.zip")
+
+    history.update_file_path("http://none.com/x", "unrelated", "/downloads/x")
+
+    match = history.find_duplicate("http://x.com/f.zip", "f.zip")
+    assert "file_path" not in match

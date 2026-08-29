@@ -11,6 +11,7 @@ from .message_handlers import (
   cmd_start,
   cmd_status,
   handle_message,
+  on_duplicate_choice,
   on_select_option,
 )
 
@@ -26,4 +27,5 @@ __all__ = [
   "cmd_remove",
   "handle_message",
   "on_select_option",
+  "on_duplicate_choice",
 ]

@@ -14,6 +14,7 @@ from handlers.message_handlers import (
   cmd_start,
   cmd_status,
   handle_message,
+  on_duplicate_choice,
   on_select_option,
 )
 
@@ -231,6 +232,50 @@ class TestCmdQueue:
     mock_update.message.reply_text.assert_awaited_once()
     args, _ = mock_update.message.reply_text.call_args
     assert "already queued" in args[0]
+
+  async def test_duplicate_without_file_shows_only_redownload_button(
+      self, mock_update, mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr(
+      "handlers.message_handlers.history.find_duplicate",
+      lambda url, name: {
+        "matched_by": "url",
+        "added_at": "2026-01-01 00:00:00",
+        "package_name": "f.zip",
+      },
+    )
+    mock_context.args = ["http://x.com/f.zip", "f.zip"]
+
+    await cmd_queue(mock_update, mock_context)
+
+    _, kwargs = mock_update.message.reply_text.call_args
+    buttons = kwargs["reply_markup"].inline_keyboard
+    assert len(buttons) == 1
+
+  async def test_duplicate_with_existing_file_shows_send_button(
+      self, mock_update, mock_context, monkeypatch, tmp_path):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    existing_file = tmp_path / "f.zip"
+    existing_file.write_bytes(b"data")
+    monkeypatch.setattr(
+      "handlers.message_handlers.history.find_duplicate",
+      lambda url, name: {
+        "matched_by": "url",
+        "added_at": "2026-01-01 00:00:00",
+        "package_name": "f.zip",
+        "file_path": str(existing_file),
+      },
+    )
+    mock_context.args = ["http://x.com/f.zip", "f.zip"]
+
+    await cmd_queue(mock_update, mock_context)
+
+    _, kwargs = mock_update.message.reply_text.call_args
+    buttons = kwargs["reply_markup"].inline_keyboard
+    assert len(buttons) == 2
+    assert "pending_duplicates" in mock_context.chat_data
 
   async def test_force_bypasses_duplicate_check(self, mock_update,
                                                 mock_context, monkeypatch):
@@ -715,6 +760,117 @@ class TestOnSelectOption:
     mock_context.chat_data = {"pending_downloads": {}}
 
     await on_select_option(update, mock_context)
+
+    update.callback_query.answer.assert_awaited_once_with("Not authorized.",
+                                                          show_alert=True)
+
+
+class TestOnDuplicateChoice:
+
+  def _make_callback_update(self, data: str):
+    """Build a MagicMock update with a callback_query for the given data."""
+    update = MagicMock()
+    update.effective_chat.id = 12345
+    update.callback_query.data = data
+    update.callback_query.answer = AsyncMock()
+    update.callback_query.edit_message_text = AsyncMock()
+    update.callback_query.message = MagicMock()
+    update.callback_query.message.edit_text = AsyncMock()
+    update.effective_message = update.callback_query.message
+    return update
+
+  async def test_redownload_starts_a_fresh_download(self, mock_context,
+                                                    monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    monkeypatch.setattr("handlers.message_handlers.history.record",
+                        MagicMock())
+    run_download_mock = AsyncMock()
+    monkeypatch.setattr("handlers.message_handlers._run_download",
+                        run_download_mock)
+    update = self._make_callback_update("dupe:abc123:redownload")
+    mock_context.chat_data = {
+      "pending_duplicates": {
+        "abc123": {
+          "url": "http://x.com/f.zip",
+          "package_name": "f.zip",
+          "dedup_name": "f.zip",
+          "file_path": None,
+        }
+      }
+    }
+
+    await on_duplicate_choice(update, mock_context)
+
+    update.callback_query.answer.assert_awaited_once()
+    run_download_mock.assert_awaited_once_with(update, mock_context,
+                                               "http://x.com/f.zip", "f.zip")
+    assert "abc123" not in mock_context.chat_data["pending_duplicates"]
+
+  async def test_send_delivers_existing_file(self, mock_context, monkeypatch,
+                                             tmp_path):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    existing_file = tmp_path / "f.zip"
+    existing_file.write_bytes(b"data")
+    send_local_file_mock = AsyncMock()
+    monkeypatch.setattr("handlers.message_handlers._send_local_file",
+                        send_local_file_mock)
+    update = self._make_callback_update("dupe:abc123:send")
+    mock_context.chat_data = {
+      "pending_duplicates": {
+        "abc123": {
+          "url": "http://x.com/f.zip",
+          "package_name": "f.zip",
+          "dedup_name": "f.zip",
+          "file_path": str(existing_file),
+        }
+      }
+    }
+
+    await on_duplicate_choice(update, mock_context)
+
+    send_local_file_mock.assert_awaited_once()
+
+  async def test_send_reports_missing_file(self, mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    update = self._make_callback_update("dupe:abc123:send")
+    mock_context.chat_data = {
+      "pending_duplicates": {
+        "abc123": {
+          "url": "http://x.com/f.zip",
+          "package_name": "f.zip",
+          "dedup_name": "f.zip",
+          "file_path": "/does/not/exist.zip",
+        }
+      }
+    }
+
+    await on_duplicate_choice(update, mock_context)
+
+    args, _ = update.callback_query.edit_message_text.call_args
+    assert "no longer available" in args[0]
+
+  async def test_expired_choice_is_reported(self, mock_context, monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: True)
+    update = self._make_callback_update("dupe:missing:redownload")
+    mock_context.chat_data = {"pending_duplicates": {}}
+
+    await on_duplicate_choice(update, mock_context)
+
+    args, _ = update.callback_query.edit_message_text.call_args
+    assert "expired" in args[0]
+
+  async def test_does_nothing_when_unauthorized(self, mock_context,
+                                                monkeypatch):
+    monkeypatch.setattr("handlers.message_handlers.is_authorized",
+                        lambda update: False)
+    update = self._make_callback_update("dupe:abc123:redownload")
+    mock_context.chat_data = {"pending_duplicates": {}}
+
+    await on_duplicate_choice(update, mock_context)
 
     update.callback_query.answer.assert_awaited_once_with("Not authorized.",
                                                           show_alert=True)

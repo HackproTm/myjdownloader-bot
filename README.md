@@ -115,9 +115,11 @@ https://example.com/file.zip my_custom_name.zip
 Send `/queue` with no arguments and the bot will ask you for the URL (validating it looks like a
 real link) and then for a file name (send `-` to use the default one).
 
-If a URL or file name was already queued before, `/queue` warns you and asks you to resend the
-command with `force` at the end to confirm you want to download it again. This history is stored
-in `downloads/.bot_data/history.json` and survives container restarts.
+If a URL or file name was already queued before, `/queue` asks you (with buttons) whether to
+download it again or, if the file is still on disk, resend it straight away without re-downloading.
+This history — including the resulting file path once a download finishes — is stored in
+`downloads/.bot_data/history.json` and survives container restarts. You can still force a
+re-download without the prompt by adding `force` at the end: `/queue <url> <name> force`.
 
 When a link offers more than one file or quality (e.g. a YouTube video with several resolutions,
 audio-only, thumbnail, subtitles), the bot shows a button per option with an icon and description

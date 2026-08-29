@@ -26,6 +26,8 @@ def mock_update():
   update.effective_chat.id = 12345
   update.message.text = ""
   update.message.reply_text = AsyncMock()
+  # Mirrors real PTB behavior where effective_message resolves to .message.
+  update.effective_message = update.message
   return update
 
 
