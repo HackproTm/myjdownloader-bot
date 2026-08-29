@@ -66,7 +66,9 @@ def main() -> None:
     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
   logger.info("Bot started — waiting for Telegram messages...")
-  app.run_polling(allowed_updates=["message"])
+  # Let PTB compute allowed_updates from the registered handlers (message AND
+  # callback_query for the inline-keyboard file/resolution picker).
+  app.run_polling()
 
 
 if __name__ == "__main__":
