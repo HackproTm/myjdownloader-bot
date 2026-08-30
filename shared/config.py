@@ -43,19 +43,19 @@ def _sanitize_for_logging(value: Optional[str], prefix_len: int = 4) -> str:
 
 # Get MyJDownloader credentials from environment variables (required)
 try:
-  MYJD_EMAIL: str = _get_required_secret("MYJD_EMAIL",
-                                         "MyJDownloader account email")
-  MYJD_PASSWORD: str = _get_required_secret("MYJD_PASSWORD",
-                                            "MyJDownloader account password")
+  JD_EMAIL: str = _get_required_secret("JD_EMAIL",
+                                       "MyJDownloader account email")
+  JD_PASSWORD: str = _get_required_secret("JD_PASSWORD",
+                                          "MyJDownloader account password")
   logger.info(
-    f"MyJD credentials configured: email={_sanitize_for_logging(MYJD_EMAIL)}")
+    f"MyJD credentials configured: email={_sanitize_for_logging(JD_EMAIL)}")
 except ValueError as e:
   logger.error(str(e))
   raise
 
-MYJD_DEVICE_NAME: str = os.environ.get("MYJD_DEVICE_NAME",
-                                       socket.gethostname()).strip()
-logger.info(f"MyJDownloader device name: {MYJD_DEVICE_NAME}")
+JD_DEVICENAME: str = os.environ.get("JD_DEVICENAME",
+                                    socket.gethostname()).strip()
+logger.info(f"MyJDownloader device name: {JD_DEVICENAME}")
 
 # Get download settings from environment variables (optional)
 DOWNLOADS_PATH: str = os.environ.get("DOWNLOADS_PATH", "/downloads").strip()

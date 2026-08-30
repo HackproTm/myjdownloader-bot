@@ -72,9 +72,9 @@ Create a `.env` file in the project root:
 
 ```env
 TELEGRAM_TOKEN=your_telegram_bot_token
-MYJD_EMAIL=your_myjdownloader_email
-MYJD_PASSWORD=your_myjdownloader_password
-MYJD_DEVICE_NAME=MyJDownloader
+JD_EMAIL=your_myjdownloader_email
+JD_PASSWORD=your_myjdownloader_password
+JD_DEVICENAME=MyJDownloader
 ALLOWED_CHAT_IDS=123456789,987654321
 POLL_INTERVAL=10
 MAX_FILE_SIZE_MB=50
@@ -83,9 +83,9 @@ MAX_FILE_SIZE_MB=50
 | Variable            | Required | Default            | Description                                                    |
 | -------------------- | :------: | ------------------- | ---------------------------------------------------------------- |
 | `TELEGRAM_TOKEN`     |    ✅    | —                   | Telegram bot token from BotFather                                |
-| `MYJD_EMAIL`         |    ✅    | —                   | MyJDownloader account email                                       |
-| `MYJD_PASSWORD`      |    ✅    | —                   | MyJDownloader account password                                    |
-| `MYJD_DEVICE_NAME`   |    ❌    | machine hostname    | Name of the JDownloader device to connect to                     |
+| `JD_EMAIL`           |    ✅    | —                   | MyJDownloader account email                                       |
+| `JD_PASSWORD`        |    ✅    | —                   | MyJDownloader account password                                    |
+| `JD_DEVICENAME`      |    ❌    | machine hostname    | Name of the JDownloader device to connect to                     |
 | `ALLOWED_CHAT_IDS`   |    ❌    | *(empty = anyone)*  | Comma-separated Telegram chat IDs allowed to use the bot          |
 | `POLL_INTERVAL`      |    ❌    | `10`                | Seconds between download status checks                           |
 | `MAX_FILE_SIZE_MB`   |    ❌    | `50`                | Maximum file size (MB) the bot will upload back to Telegram       |

@@ -4,8 +4,8 @@ import logging
 import os
 
 from shared.config import (  # noqa: F401
-  DOWNLOADS_PATH, MAX_FILE_SIZE_BYTES, MYJD_DEVICE_NAME, MYJD_EMAIL,
-  MYJD_PASSWORD, POLL_INTERVAL, _get_required_secret, _sanitize_for_logging,
+  DOWNLOADS_PATH, JD_DEVICENAME, JD_EMAIL, JD_PASSWORD, MAX_FILE_SIZE_BYTES,
+  POLL_INTERVAL, _get_required_secret, _sanitize_for_logging,
 )
 
 logger = logging.getLogger(__name__)

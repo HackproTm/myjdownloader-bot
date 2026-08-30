@@ -9,9 +9,9 @@ import myjdapi
 
 from shared.config import (
   DOWNLOADS_PATH,
-  MYJD_DEVICE_NAME,
-  MYJD_EMAIL,
-  MYJD_PASSWORD,
+  JD_DEVICENAME,
+  JD_EMAIL,
+  JD_PASSWORD,
   POLL_INTERVAL,
 )
 from shared.data import DownloadJob
@@ -54,7 +54,7 @@ class JDownloaderManager:
         try:
           await self._run(self._connect_sync)
           logger.info("Connected to MyJDownloader device: %s",
-                      MYJD_DEVICE_NAME)
+                      JD_DEVICENAME)
           return
         except Exception as exc:
           logger.warning("Attempt %d/%d failed: %s", attempt, max_retries, exc)
@@ -75,10 +75,10 @@ class JDownloaderManager:
     """Synchronously connect to MyJDownloader."""
     jd = myjdapi.Myjdapi()
     jd.set_app_key("telegram-jd-bot")
-    jd.connect(MYJD_EMAIL, MYJD_PASSWORD)
+    jd.connect(JD_EMAIL, JD_PASSWORD)
     jd.update_devices()
     self._jd = jd
-    self._device = jd.get_device(MYJD_DEVICE_NAME)
+    self._device = jd.get_device(JD_DEVICENAME)
 
   # ── Helpers ───────────────────────────────────────────────────────────────
 

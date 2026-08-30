@@ -4,9 +4,9 @@ services:
     container_name: jdownloader
     restart: unless-stopped
     environment:
-      JD_EMAIL: ${MYJD_EMAIL}
-      JD_PASSWORD: ${MYJD_PASSWORD}
-      JD_DEVICENAME: ${MYJD_DEVICE_NAME:-MyJDownloader}
+      JD_EMAIL: ${JD_EMAIL}
+      JD_PASSWORD: ${JD_PASSWORD}
+      JD_DEVICENAME: ${JD_DEVICENAME:-MyJDownloader}
     volumes:
       - ./downloads:/downloads
       - jd_config:/opt/JDownloader/cfg
@@ -19,9 +19,9 @@ services:
     restart: unless-stopped
     environment:
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
-      MYJD_EMAIL: ${MYJD_EMAIL}
-      MYJD_PASSWORD: ${MYJD_PASSWORD}
-      MYJD_DEVICE_NAME: ${MYJD_DEVICE_NAME:-MyJDownloader}
+      JD_EMAIL: ${JD_EMAIL}
+      JD_PASSWORD: ${JD_PASSWORD}
+      JD_DEVICENAME: ${JD_DEVICENAME:-MyJDownloader}
       ALLOWED_CHAT_IDS: ${ALLOWED_CHAT_IDS:-}
       DOWNLOADS_PATH: /downloads
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
@@ -39,9 +39,9 @@ services:
     restart: unless-stopped
     environment:
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
-      MYJD_EMAIL: ${MYJD_EMAIL}
-      MYJD_PASSWORD: ${MYJD_PASSWORD}
-      MYJD_DEVICE_NAME: ${MYJD_DEVICE_NAME:-MyJDownloader}
+      JD_EMAIL: ${JD_EMAIL}
+      JD_PASSWORD: ${JD_PASSWORD}
+      JD_DEVICENAME: ${JD_DEVICENAME:-MyJDownloader}
       ALLOWED_CHAT_IDS: ${ALLOWED_CHAT_IDS:-}
       DOWNLOADS_PATH: /downloads
       POLL_INTERVAL: ${POLL_INTERVAL:-10}

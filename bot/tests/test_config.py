@@ -40,7 +40,7 @@ class TestGetRequiredSecret:
 class TestDeviceNameFallback:
 
   def test_falls_back_to_hostname_when_not_configured(self, monkeypatch):
-    monkeypatch.delenv("MYJD_DEVICE_NAME", raising=False)
+    monkeypatch.delenv("JD_DEVICENAME", raising=False)
     monkeypatch.setattr("socket.gethostname", lambda: "resolved-hostname")
 
     import shared.config as shared_config
@@ -48,7 +48,7 @@ class TestDeviceNameFallback:
     importlib.reload(shared_config)
     importlib.reload(config)
     try:
-      assert config.MYJD_DEVICE_NAME == "resolved-hostname"
+      assert config.JD_DEVICENAME == "resolved-hostname"
     finally:
       monkeypatch.undo()
       importlib.reload(shared_config)
