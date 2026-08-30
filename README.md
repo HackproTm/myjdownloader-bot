@@ -89,6 +89,7 @@ MAX_FILE_SIZE_MB=50
 | `ALLOWED_CHAT_IDS`   |    ❌    | *(empty = anyone)*  | Comma-separated Telegram chat IDs allowed to use the bot          |
 | `POLL_INTERVAL`      |    ❌    | `10`                | Seconds between download status checks                           |
 | `MAX_FILE_SIZE_MB`   |    ❌    | `50`                | Maximum file size (MB) the bot will upload back to Telegram       |
+| `CORS_ORIGINS`       |    ❌    | *(empty = same-origin only)* | Comma-separated origins allowed to call the Mini App API   |
 
 ### 3. Run with Docker Compose
 
@@ -96,9 +97,10 @@ MAX_FILE_SIZE_MB=50
 docker compose up -d --build
 ```
 
-This starts two containers:
+This starts three containers:
 - `jdownloader` — the JDownloader instance
 - `bot` — the Telegram bot
+- `api` — the Mini App API (FastAPI); not yet exposed publicly, see [Project Structure](#project-structure)
 
 ### 4. Start chatting
 
@@ -106,15 +108,47 @@ Open your bot in Telegram and send `/start`, then send it a download link.
 
 ## Usage
 
+Just send a URL to start a download:
+
 ```
 https://example.com/file.zip
 https://example.com/file.zip my_custom_name.zip
 ```
 
-| Command   | Description                       |
-| --------- | ---------------------------------- |
-| `/start`  | Show the welcome message and usage |
-| `/help`   | Same as `/start`                   |
+If a link offers more than one file or quality (e.g. a YouTube video with several resolutions,
+audio-only, thumbnail, subtitles), the bot shows a button per option with an icon and description
+(🎬 video, 🎵 audio, 🖼 thumbnail, 📝 subtitles, plus resolution/bitrate when available) so you can
+pick exactly what you want. Package names in JDownloader are tagged with the detected platform
+(YouTube, Instagram, X, Facebook, TikTok, etc.).
+
+### Commands
+
+| Command                                       | Description                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------- |
+| `/start`, `/help`                              | Show the welcome message and command list                          |
+| `/queue <url> [name] [force]`                  | Add a download to the queue (or just `/queue` to be asked for it)   |
+| `/list`                                        | Show the queue with download percentage                             |
+| `/status`                                      | Show the queue with status text (Name, Status, URL)                 |
+| `/remove <name>`                               | Remove a download from the queue/JDownloader and delete its local file |
+| `/accounts`                                     | List configured premium accounts                                    |
+| `/addaccount <hoster> <username> <password>`   | Add a premium account                                               |
+| `/removeaccount <uuid>`                        | Remove a premium account                                            |
+
+### Interactive /queue
+
+Send `/queue` with no arguments and the bot asks you for the URL (validating it looks like a
+real link) and then for a file name (send `-` to use the default one).
+
+### Duplicate detection
+
+If a URL or file name was already queued before, `/queue` shows buttons instead of downloading
+right away:
+- **Download again** — re-runs the download (same as adding `force` at the end manually).
+- **Send existing file** — if the file is still on disk, resends it immediately without
+  re-downloading.
+
+This history — including the resulting file path once a download finishes — is stored in
+`downloads/.bot_data/history.json` and survives container restarts.
 
 ## Development
 
@@ -128,7 +162,7 @@ source .venv/bin/activate
 uv pip install -r requirements-dev.txt
 
 # Mini App API (separate venv, Python 3.12 recommended)
-cd /api
+cd api
 uv venv --python 3.12 .venv
 source .venv/bin/activate
 uv pip install -r requirements-dev.txt
