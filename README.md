@@ -62,8 +62,8 @@ Send a URL to the bot, it queues the download in JDownloader, tracks progress wi
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
-cd myjdownload-app
+git clone https://github.com/HackproTm/myjdownloader-bot.git
+cd myjdownloader-bot
 ```
 
 ### 2. Configure environment variables
@@ -123,14 +123,15 @@ https://example.com/file.zip my_custom_name.zip
 ```bash
 # Bot
 cd bot
-python -m venv .venv
+uv venv --python 3.12 .venv
 source .venv/bin/activate
-uv pip install -r requirements.txt -r requirements-dev.txt
+uv pip install -r requirements-dev.txt
 
 # Mini App API (separate venv, Python 3.12 recommended)
-cd ../api
+cd /api
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -r requirements.txt -r requirements-dev.txt
+source .venv/bin/activate
+uv pip install -r requirements-dev.txt
 ```
 
 ### Running tests
