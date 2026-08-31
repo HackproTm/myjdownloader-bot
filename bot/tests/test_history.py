@@ -74,3 +74,28 @@ class TestUpdateFilePath:
 
     match = history.find_duplicate("http://x.com/f.zip", "f.zip")
     assert "file_path" not in match
+
+
+class TestFindByPackageName:
+
+  def test_returns_none_when_no_match(self, tmp_path, monkeypatch):
+    _use_temp_history(tmp_path, monkeypatch)
+
+    assert history.find_by_package_name("missing.zip") is None
+
+  def test_returns_matching_entry(self, tmp_path, monkeypatch):
+    _use_temp_history(tmp_path, monkeypatch)
+    history.record("http://x.com/f.zip", "f.zip")
+
+    entry = history.find_by_package_name("f.zip")
+
+    assert entry["url"] == "http://x.com/f.zip"
+
+  def test_returns_most_recent_match(self, tmp_path, monkeypatch):
+    _use_temp_history(tmp_path, monkeypatch)
+    history.record("http://old.com/f.zip", "f.zip")
+    history.record("http://new.com/f.zip", "f.zip")
+
+    entry = history.find_by_package_name("f.zip")
+
+    assert entry["url"] == "http://new.com/f.zip"

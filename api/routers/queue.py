@@ -3,9 +3,11 @@
 Mirrors the bot's /queue, /list, /status, /remove commands.
 """
 
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from api.auth import require_telegram_user
@@ -116,3 +118,13 @@ async def remove_from_queue(name: str) -> dict:
   if not removed:
     raise HTTPException(status_code=404, detail="No queue entry found.")
   return {"status": "removed"}
+
+
+@router.get("/{name}/file")
+async def download_existing_file(name: str) -> FileResponse:
+  """Serve a previously downloaded file for direct download, if it still exists."""
+  entry = history.find_by_package_name(name)
+  file_path = entry.get("file_path") if entry else None
+  if not file_path or not os.path.exists(file_path):
+    raise HTTPException(status_code=404, detail="File not found.")
+  return FileResponse(file_path, filename=os.path.basename(file_path))

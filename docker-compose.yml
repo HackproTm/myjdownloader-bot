@@ -46,13 +46,24 @@ services:
       DOWNLOADS_PATH: /downloads
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
-      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
     volumes:
       - ./downloads:/downloads
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
       - jdownloader
+
+  web:
+    build: ./web
+    container_name: jd-mini-app-web
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - api
 
 volumes:
   jd_config:

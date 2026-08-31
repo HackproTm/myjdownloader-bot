@@ -11,8 +11,8 @@ Send a URL to the bot, it queues the download in JDownloader, tracks progress wi
 - 📊 Live progress updates (percentage, size, status) in Telegram
 - 📤 Automatic upload of the finished file back to the chat
 - 🔒 Optional chat allow-list (`ALLOWED_CHAT_IDS`) to restrict who can use the bot
-- 🐳 Fully containerized with Docker Compose (bot + JDownloader + Mini App API)
-- 📱 A Telegram Mini App API (`api/`) exposing the same functionality (queue, accounts, duplicates) over HTTP for a future graphical web UI inside Telegram
+- 🐳 Fully containerized with Docker Compose (bot + JDownloader + Mini App API + Mini App web frontend)
+- 📱 A Telegram Mini App (`web/`) with the same functionality (queue, accounts, duplicates, variant picker) as a graphical web UI inside Telegram, served by its own nginx container and talking to the API (`api/`) over CORS
 
 ## Tech Stack
 
@@ -21,13 +21,14 @@ Send a URL to the bot, it queues the download in JDownloader, tracks progress wi
 - [FastAPI](https://fastapi.tiangolo.com/) — Mini App API
 - [myjdapi](https://github.com/mmarquezs/My.Jdownloader-API-Library) — MyJDownloader API client
 - [python-dotenv](https://github.com/theskumar/python-dotenv) — environment variable loading
+- nginx — serves the Mini App web frontend (vanilla HTML/CSS/JS, no build step)
 - Docker & Docker Compose
 
 ## Project Structure
 
 ```
 .
-├── docker-compose.yml       # Orchestrates jdownloader, bot, and api containers
+├── docker-compose.yml       # Orchestrates jdownloader, bot, api, and web containers
 ├── downloads/               # Shared volume where finished downloads land
 ├── shared/                  # Code shared by bot/ and api/ (JDownloader service, history, utils)
 │   ├── config.py
@@ -41,14 +42,20 @@ Send a URL to the bot, it queues the download in JDownloader, tracks progress wi
 │   ├── tests/                # Unit test suite (pytest)
 │   ├── Dockerfile
 │   └── requirements.txt
-└── api/                     # Mini App API (FastAPI)
-    ├── main.py              # FastAPI app entry point
-    ├── config.py            # API-specific env vars
-    ├── auth.py               # Telegram Mini App initData validation
-    ├── routers/              # /api/queue, /api/accounts endpoints
-    ├── tests/                # Unit test suite (pytest)
-    ├── Dockerfile
-    └── requirements.txt
+├── api/                     # Mini App API (FastAPI)
+│   ├── main.py              # FastAPI app entry point
+│   ├── config.py            # API-specific env vars
+│   ├── auth.py               # Telegram Mini App initData validation
+│   ├── routers/              # /api/queue, /api/accounts endpoints
+│   ├── tests/                # Unit test suite (pytest)
+│   ├── Dockerfile
+│   └── requirements.txt
+└── web/                     # Mini App frontend (vanilla HTML/CSS/JS, no build step), served by nginx
+    ├── index.html            # Template; ${API_BASE_URL} substituted at container startup
+    ├── style.css
+    ├── app.js
+    ├── Dockerfile             # nginx:alpine
+    └── docker-entrypoint.sh   # envsubst step run by nginx's docker-entrypoint.d/
 ```
 
 ## Prerequisites
@@ -89,7 +96,8 @@ MAX_FILE_SIZE_MB=50
 | `ALLOWED_CHAT_IDS`   |    ❌    | *(empty = anyone)*  | Comma-separated Telegram chat IDs allowed to use the bot          |
 | `POLL_INTERVAL`      |    ❌    | `10`                | Seconds between download status checks                           |
 | `MAX_FILE_SIZE_MB`   |    ❌    | `50`                | Maximum file size (MB) the bot will upload back to Telegram       |
-| `CORS_ORIGINS`       |    ❌    | *(empty = same-origin only)* | Comma-separated origins allowed to call the Mini App API   |
+| `CORS_ORIGINS`       |    ❌    | `http://localhost:8080` | Comma-separated origins allowed to call the Mini App API (the `web` container's origin) |
+| `API_BASE_URL`       |    ❌    | `http://localhost:8000` | Base URL where the `web` frontend reaches the API; baked into `index.html` at container startup |
 
 ### 3. Run with Docker Compose
 
@@ -97,10 +105,11 @@ MAX_FILE_SIZE_MB=50
 docker compose up -d --build
 ```
 
-This starts three containers:
+This starts four containers:
 - `jdownloader` — the JDownloader instance
 - `bot` — the Telegram bot
-- `api` — the Mini App API (FastAPI); not yet exposed publicly, see [Project Structure](#project-structure)
+- `api` — the Mini App API (FastAPI); not yet exposed publicly (Cloudflare Tunnel setup is a future step)
+- `web` — the Mini App frontend (nginx), talking to `api` over CORS; not yet exposed publicly either, see [Project Structure](#project-structure)
 
 ### 4. Start chatting
 

@@ -53,8 +53,7 @@ class JDownloaderManager:
       for attempt in range(1, max_retries + 1):
         try:
           await self._run(self._connect_sync)
-          logger.info("Connected to MyJDownloader device: %s",
-                      JD_DEVICENAME)
+          logger.info("Connected to MyJDownloader device: %s", JD_DEVICENAME)
           return
         except Exception as exc:
           logger.warning("Attempt %d/%d failed: %s", attempt, max_retries, exc)

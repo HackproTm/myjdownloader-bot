@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="api-base-url" content="${API_BASE_URL}" />
+  <title>MyJDownloader</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="tabs">
+    <button class="tab-btn active" data-tab="queue" type="button">Queue</button>
+    <button class="tab-btn" data-tab="accounts" type="button">Accounts</button>
+  </header>
+
+  <main>
+    <section id="tab-queue" class="tab-panel active">
+      <form id="queue-form" class="card">
+        <input type="url" id="queue-url" placeholder="https://example.com/file.zip" required />
+        <input type="text" id="queue-name" placeholder="Optional file name" />
+        <button type="submit">Add to queue</button>
+      </form>
+
+      <div id="queue-message" class="message"></div>
+
+      <ul id="queue-list" class="list"></ul>
+    </section>
+
+    <section id="tab-accounts" class="tab-panel">
+      <form id="account-form" class="card">
+        <input type="text" id="account-hoster" placeholder="Hoster (e.g. instagram.com)" required />
+        <input type="text" id="account-username" placeholder="Username" required />
+        <input type="password" id="account-password" placeholder="Password" required />
+        <button type="submit">Add account</button>
+      </form>
+
+      <div id="account-message" class="message"></div>
+
+      <ul id="account-list" class="list"></ul>
+    </section>
+  </main>
+
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h3 id="modal-title"></h3>
+      <div id="modal-body"></div>
+      <button id="modal-close" class="secondary" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

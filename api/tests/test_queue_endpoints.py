@@ -120,3 +120,43 @@ class TestRemoveFromQueue:
                              headers={"X-Telegram-Init-Data": init_data})
 
     assert response.status_code == 404
+
+
+class TestDownloadExistingFile:
+
+  def test_returns_404_when_no_history_entry(self, monkeypatch):
+    monkeypatch.setattr("api.routers.queue.history.find_by_package_name",
+                        lambda name: None)
+    init_data = build_init_data(auth_date=str(int(time.time())))
+
+    response = client.get("/api/queue/missing.zip/file",
+                          headers={"X-Telegram-Init-Data": init_data})
+
+    assert response.status_code == 404
+
+  def test_returns_404_when_file_no_longer_exists(self, monkeypatch):
+    monkeypatch.setattr(
+      "api.routers.queue.history.find_by_package_name",
+      lambda name: {"file_path": "/does/not/exist.zip"},
+    )
+    init_data = build_init_data(auth_date=str(int(time.time())))
+
+    response = client.get("/api/queue/f.zip/file",
+                          headers={"X-Telegram-Init-Data": init_data})
+
+    assert response.status_code == 404
+
+  def test_returns_file_when_it_exists(self, monkeypatch, tmp_path):
+    existing_file = tmp_path / "f.zip"
+    existing_file.write_bytes(b"data")
+    monkeypatch.setattr(
+      "api.routers.queue.history.find_by_package_name",
+      lambda name: {"file_path": str(existing_file)},
+    )
+    init_data = build_init_data(auth_date=str(int(time.time())))
+
+    response = client.get("/api/queue/f.zip/file",
+                          headers={"X-Telegram-Init-Data": init_data})
+
+    assert response.status_code == 200
+    assert response.content == b"data"

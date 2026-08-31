@@ -78,3 +78,19 @@ def update_file_path(url: str, package_name: str, file_path: str) -> None:
       entry["file_path"] = file_path
       break
   _save(entries)
+
+
+def find_by_package_name(package_name: str) -> Optional[dict]:
+  """
+  Find the most recent history entry with the given package name.
+
+  Args:
+    package_name: Package/file name to look up
+
+  Returns:
+    The matching record, or None if nothing matches.
+  """
+  for entry in reversed(_load()):
+    if entry["package_name"] == package_name:
+      return entry
+  return None
